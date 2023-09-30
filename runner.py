@@ -15,9 +15,9 @@ white = 255, 255, 255
 # Create screen
 screen = pygame.display.set_mode(size)
 
-mediumFont = pygame.font.Font("ai50\\projects\\2023\\x\\tictactoe\\OpenSans-Regular.ttf", 28)
-largeFont = pygame.font.Font("ai50\\projects\\2023\\x\\tictactoe\\OpenSans-Regular.ttf", 40)
-moveFont = pygame.font.Font("ai50\\projects\\2023\\x\\tictactoe\\OpenSans-Regular.ttf", 60)
+mediumFont = pygame.font.Font("\\OpenSans-Regular.ttf", 28)
+largeFont = pygame.font.Font("\\OpenSans-Regular.ttf", 40)
+moveFont = pygame.font.Font("\\OpenSans-Regular.ttf", 60)
 
 
 user = None
