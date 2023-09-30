@@ -90,5 +90,18 @@ while True:
                 row.append(rect)
             tiles.append(row)
 
+        game_over = ttt.terminal(board)
+        player = ttt.player(board)
+        click, _, _ = pygame.mouse.get_pressed()
+        
+        if click == 1 and user == player and not game_over:
+            mouse = pygame.mouse.get_pos()
+            
+            for i in range(3):
+                for j in range(3):
+                    if (board[i][j] == ttt.EMPTY and tiles[i][j].collidepoint(mouse)):
+                        # Test
+                        # board = ttt.result(board, (i, j)) Place piece on board
+                        board = [[ttt.X, None, None], [None, None, None], [None, None, None]]
 
     pygame.display.flip()
