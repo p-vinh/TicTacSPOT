@@ -16,21 +16,20 @@ def initial_state():
 
 # Returns player who has the next turn on a board
 def player(board):
-    X_count = 0
-    O_count = 0
-    
-    for i in range(3):
-        for j in range(3):
-            if board[i][j] == X:
-                X_count += 1
-            elif board[i][j] == O:
-                O_count += 1    
+    X_count = sum(x.count(X) for x in board)
+    O_count = sum(x.count(O) for x in board)
+      
     return X if X_count <= O_count else O
 
 # Returns set of all possible actions (i, j) available on the board
 def actions(board):
+    actions = set()
     
-    return    
+    for i, row in enumerate(board):
+        for j, celll in enumerate(row):
+            if cell == EMPTY:
+                actions.add((i, j))
+    return actions
 
 # Returns the board that results from making move (i,j)
 def result(board, action):
