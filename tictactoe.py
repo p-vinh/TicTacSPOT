@@ -26,7 +26,7 @@ def actions(board):
     actions = set()
     
     for i, row in enumerate(board):
-        for j, celll in enumerate(row):
+        for j, cell in enumerate(row):
             if cell == EMPTY:
                 actions.add((i, j))
     return actions
