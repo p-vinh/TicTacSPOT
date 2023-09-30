@@ -74,16 +74,20 @@ def winner(board):
 
 # Returns True if game is over, False otherwise
 def terminal(board):
-    
-    
+    # If there is a winner, game is over
+    if winner(board) is not None or not actions(board):
+        return True
     return False
 
 # Returns 1 if X has won the game, -1 if O has won, 0 otherwise
 def utility(board):
+    if winner(board) == X:
+        return 1
+    elif winner(board) == O:
+        return -1
+    else:
+        return 0
     
-    
-    return
-
 # Returns the optimal action for the current player on the board
 def minimax(board):
     
