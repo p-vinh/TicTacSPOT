@@ -9,7 +9,7 @@ EMPTY = None
 
 # Creates an empty board
 def initial_state():
-    board = [[EMPTY, EMPTY, EMPTY],
+    return [[EMPTY, EMPTY, EMPTY],
              [EMPTY, EMPTY, EMPTY],
              [EMPTY, EMPTY, EMPTY]]
     
