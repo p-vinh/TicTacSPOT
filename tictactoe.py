@@ -89,7 +89,51 @@ def utility(board):
         return 0
     
 # Returns the optimal action for the current player on the board
-def minimax(board):
+def minimax(board, depth, isMaximizingPlayer):
     
+    if terminal(board):
+        return utility(board)
     
-    return
+    if isMaximizingPlayer:
+        bestScore = -math.inf
+        bestMove = None
+        
+        for action in actions(board):
+            score = minScore(result(board, action), depth + 1)
+            if bestScore < score:
+                bestScore = score
+                bestMove = action
+        return bestMove
+    else:
+        bestScore = math.inf
+        bestMove = None
+        
+        for action in actions(board):
+            score = maxScore(result(board, action), depth + 1)
+            
+            if bestScore > score:
+                bestScore = score
+                bestMove = action
+        return bestMove
+    
+def maxScore(board, depth):
+    if terminal(board):
+        return utility(board)
+    
+    bestScore = -math.inf
+    
+    for action in actions(board):
+        score = minScore(result(board, action), depth + 1)
+        bestScore = max(score, bestScore)
+    return bestScore
+
+def minScore(board, depth):
+    if terminal(board):
+        return utility(board)
+    
+    bestScore = math.inf
+    
+    for action in actions(board):
+        score = maxScore(result(board, action), depth + 1)
+        bestScore = min(score, bestScore)
+    return bestScore
