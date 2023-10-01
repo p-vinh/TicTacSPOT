@@ -66,10 +66,10 @@ def winner(board):
                 X_count += 1
             elif board[i][j] == O:
                 O_count += 1
-        if X_count == 3:
-            return X
-        elif O_count == 3:
+        if O_count == 3:
             return O
+        elif X_count == 3:
+            return X
     return None
 
 # Returns True if game is over, False otherwise
@@ -89,17 +89,17 @@ def utility(board):
         return 0
     
 # Returns the optimal action for the current player on the board
-def minimax(board, depth, isMaximizingPlayer):
+def minimax(board):
     
     if terminal(board):
         return utility(board)
     
-    if isMaximizingPlayer:
+    if player(board) == X:
         bestScore = -math.inf
         bestMove = None
         
         for action in actions(board):
-            score = minScore(result(board, action), depth + 1)
+            score = minScore(result(board, action))
             if bestScore < score:
                 bestScore = score
                 bestMove = action
@@ -109,31 +109,31 @@ def minimax(board, depth, isMaximizingPlayer):
         bestMove = None
         
         for action in actions(board):
-            score = maxScore(result(board, action), depth + 1)
+            score = maxScore(result(board, action))
             
             if bestScore > score:
                 bestScore = score
                 bestMove = action
         return bestMove
     
-def maxScore(board, depth):
+def maxScore(board):
     if terminal(board):
         return utility(board)
     
     bestScore = -math.inf
     
     for action in actions(board):
-        score = minScore(result(board, action), depth + 1)
+        score = minScore(result(board, action))
         bestScore = max(score, bestScore)
     return bestScore
 
-def minScore(board, depth):
+def minScore(board):
     if terminal(board):
         return utility(board)
     
     bestScore = math.inf
     
     for action in actions(board):
-        score = maxScore(result(board, action), depth + 1)
+        score = maxScore(result(board, action))
         bestScore = min(score, bestScore)
     return bestScore
