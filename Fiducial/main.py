@@ -24,19 +24,20 @@ def customDictionary():
 
 
 def generateMarker():
-    markerDict = aruco.getPredefinedDictionary(aruco.DICT_7X7_1000)
-    for i in range(10):
+    markerDict = aruco.getPredefinedDictionary(aruco.DICT_6X6_1000)
+    for i in range(20):
         marker = aruco.generateImageMarker(markerDict, i, 700)
         cv.imwrite(f"Images\\marker{i}.jpg", marker)
     
     
 def showCamera():
-    fs = cv.FileStorage("arucoDict.yaml", cv.FILE_STORAGE_READ)
-    bytesList = np.frombuffer(fs.getNode("aruco_dict").mat().tobytes(), dtype=np.uint8)
-    nMarkers = fs.getNode("nMarkers").real()
-    markerSize = fs.getNode("markerSize").real()
-    markerDict = aruco.Dictionary_getByteListFromBits(bytesList)
-    fs.release()
+    # fs = cv.FileStorage("arucoDict.yaml", cv.FILE_STORAGE_READ)
+    # bytesList = np.frombuffer(fs.getNode("aruco_dict").mat().tobytes(), dtype=np.uint8)
+    # nMarkers = fs.getNode("nMarkers").real()
+    # markerSize = fs.getNode("markerSize").real()
+    # markerDict = aruco.Dictionary_getByteListFromBits(bytesList)
+    # fs.release()
+    markerDict = aruco.getPredefinedDictionary(aruco.DICT_6X6_1000)
     
     # for item in markerDict.writeDictionary():
     #     print(item)
@@ -74,6 +75,7 @@ def showCamera():
 
 
 def main():
+    generateMarker()
     showCamera()
 if __name__ == '__main__':
     main()
