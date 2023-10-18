@@ -2,19 +2,27 @@ import cv2 as cv
 from cv2 import aruco
 import numpy as np
 
+def generateMarker():
+    markerDict = aruco.getPredefinedDictionary(aruco.DICT_7X7_1000)
+    for i in range(10):
+        marker = aruco.generateImageMarker(markerDict, i, 700)
+        cv.imwrite(f"Images\\marker{i}.jpg", marker)
         
 def showCamera():
-    markerDict = aruco.Dictionary_get(aruco.DICT_6X6_250)
-    param_marker = aruco.DetectorParameters_create()
-    cap = cv2.VideoCapture(0)
+    markerDict = aruco.getPredefinedDictionary(aruco.DICT_7X7_1000)
+    param_marker = aruco.DetectorParameters()
+    cap = cv.VideoCapture(0)
     
     while True:
         ret, frame = cap.read()
         
         if not ret:
             break
-        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray_frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
         markerCorners, markerIds, rejectedCandidates = aruco.detectMarkers(gray_frame, markerDict, parameters=param_marker)
+        
+        print("Marker Ids: ", markerIds)
+        print("\nMarker Corners: ", markerCorners)
         
         if markerCorners:
             for ids, corners in zip(markerIds, markerCorners):
@@ -30,17 +38,17 @@ def showCamera():
                 
                 
                 
-        cv2.imshow("frame", frame)        
+        cv.imshow("frame", frame)        
         
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        if cv.waitKey(1) & 0xFF == ord('q'):
             break
             
     cap.release()
-    cv2.destroyAllWindows()
+    cv.destroyAllWindows()
     
 
 def main():
-    showCamera()    
+    generateMarker()      
 
 if __name__ == '__main__':
     main()
