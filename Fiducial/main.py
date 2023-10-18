@@ -2,46 +2,23 @@ import cv2 as cv
 from cv2 import aruco
 import numpy as np
 from queue import Queue
-from cv2 import FileStorage, FileNode
 from config_file_reader import process_config_file #This is a function in config_file_reader.py
 
 
 general_settings, markers = process_config_file('tracker_config_file.ini')
 
 
-def customDictionary():
-    marker1 = cv.imread("Images\\523.jpg", cv.IMREAD_GRAYSCALE)
-    print(np.array([marker1]))
-    # Create a custom ArUco dictionary
-    aruco_dict = aruco.Dictionary(np.array([marker1]), 8, 6)
-    
-    # Save the dictionary to a file
-    fs = cv.FileStorage("arucoDict.yaml", cv.FILE_STORAGE_WRITE)
-    fs.write("aruco_dict", np.array([marker1]))
-    fs.release()
- 
-
-
-
 def generateMarker():
-    markerDict = aruco.getPredefinedDictionary(aruco.DICT_6X6_1000)
+    markerDict = aruco.getPredefinedDictionary(aruco.DICT_APRILTAG_36h11)
     for i in range(20):
         marker = aruco.generateImageMarker(markerDict, i, 700)
         cv.imwrite(f"Images\\marker{i}.jpg", marker)
     
     
-def showCamera():
-    # fs = cv.FileStorage("arucoDict.yaml", cv.FILE_STORAGE_READ)
-    # bytesList = np.frombuffer(fs.getNode("aruco_dict").mat().tobytes(), dtype=np.uint8)
-    # nMarkers = fs.getNode("nMarkers").real()
-    # markerSize = fs.getNode("markerSize").real()
-    # markerDict = aruco.Dictionary_getByteListFromBits(bytesList)
-    # fs.release()
-    markerDict = aruco.getPredefinedDictionary(aruco.DICT_6X6_1000)
-    
-    # for item in markerDict.writeDictionary():
-    #     print(item)
-    
+def detectFiducial():
+
+    markerDict = aruco.getPredefinedDictionary(aruco.DICT_APRILTAG_36h11)
+        
     param_marker = aruco.DetectorParameters()
     cap = cv.VideoCapture(0)
     
@@ -75,7 +52,6 @@ def showCamera():
 
 
 def main():
-    generateMarker()
-    showCamera()
+    detectFiducial()
 if __name__ == '__main__':
     main()
