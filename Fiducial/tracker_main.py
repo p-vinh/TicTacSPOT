@@ -14,7 +14,7 @@ from config_file_reader import process_config_file #This is a function in config
 # Get the setting from the config file. These two variables are available across threads.
 general_settings, markers = process_config_file('Fiducial\\tracker_config_file.ini')
 
-#TODO: Add freamecounter matchcounter
+
 
 #Prepare the stuff to send
 general_settings_to_be_shared = Queue()
