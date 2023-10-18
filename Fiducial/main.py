@@ -39,10 +39,10 @@ def detectFiducial():
         
         if markerCorners:
             frame = aruco.drawDetectedMarkers(frame, markerCorners, markerIds)
-
+            rejectedFrame = aruco.drawDetectedMarkers(frame, rejectedCandidates, borderColor=(100, 0, 240))
                             
         cv.imshow("frame", frame)        
-        
+        cv.imshow("rejected", rejectedFrame)
         if cv.waitKey(1) & 0xFF == ord('q'):
             break
             
