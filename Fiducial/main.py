@@ -5,11 +5,11 @@ from queue import Queue
 from config_file_reader import process_config_file #This is a function in config_file_reader.py
 
 
-general_settings, markers = process_config_file('tracker_config_file.ini')
+# general_settings, markers = process_config_file('tracker_config_file.ini')
 
 
 def generateMarker():
-    markerDict = aruco.getPredefinedDictionary(aruco.DICT_APRILTAG_36h11)
+    markerDict = aruco.getPredefinedDictionary(aruco.DICT_APRILTAG_16h5)
     for i in range(20):
         marker = aruco.generateImageMarker(markerDict, i, 700)
         cv.imwrite(f"Images\\marker{i}.jpg", marker)
@@ -52,6 +52,6 @@ def detectFiducial():
 
 
 def main():
-    detectFiducial()
+    generateMarker()
 if __name__ == '__main__':
     main()
