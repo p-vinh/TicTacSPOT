@@ -17,14 +17,10 @@ white = (255, 255, 255)
 # Create screen
 screen = pygame.display.set_mode(size)
 
-smallFont = pygame.font.Font("C:\\Users\\laure\\IdeaProjects\\TicTacSPOT\\myenv\\TicTacToeAlgo\\OpenSans-Regular.ttf",
-                             10)
-mediumFont = pygame.font.Font("C:\\Users\\laure\\IdeaProjects\\TicTacSPOT\\myenv\\TicTacToeAlgo\\OpenSans-Regular.ttf",
-                              28)
-largeFont = pygame.font.Font("C:\\Users\\laure\\IdeaProjects\\TicTacSPOT\\myenv\\TicTacToeAlgo\\OpenSans-Regular.ttf",
-                             40)
-moveFont = pygame.font.Font("C:\\Users\\laure\\IdeaProjects\\TicTacSPOT\\myenv\\TicTacToeAlgo\\OpenSans-Regular.ttf",
-                            60)
+smallFont = pygame.font.Font(".\\OpenSans-Regular.ttf", 10)
+mediumFont = pygame.font.Font(".\\OpenSans-Regular.ttf", 28)
+largeFont = pygame.font.Font(".\\OpenSans-Regular.ttf", 40)
+moveFont = pygame.font.Font(".\\OpenSans-Regular.ttf", 60)
 
 user = None
 board = ttt.initial_state()
