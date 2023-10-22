@@ -1,11 +1,12 @@
 import cv2 as cv
 from cv2 import aruco
 import numpy as np
+import time
 from queue import Queue
 from config_file_reader import process_config_file #This is a function in config_file_reader.py
 
 
-general_settings, markers = process_config_file('C:\\Users\\vinhp\\Documents\\GitHub\\TicTacSPOT\\myenv\\Fiducial\\tracker_config_file.ini')
+general_settings, markers = process_config_file('.\\Fiducial\\tracker_config_file.ini')
 
 
 def generateMarker():
@@ -17,7 +18,7 @@ def generateMarker():
     
 def detectFiducial():
 
-    markerDict = aruco.getPredefinedDictionary(aruco.DICT_APRILTAG_36h11)
+    markerDict = aruco.getPredefinedDictionary(aruco.DICT_APRILTAG_16h5)
         
     param_marker = aruco.DetectorParameters()
     cap = cv.VideoCapture(0)
@@ -29,21 +30,26 @@ def detectFiducial():
     distortion_coefficients = np.array( [general_settings["camera_k1"], general_settings["camera_k2"], general_settings["camera_p1"], general_settings["camera_p2"], general_settings["camera_k3"]] )
     #################################
     
+    start_time = time.time()
+    interval = 3
     while True:
         ret, frame = cap.read()
-        
-        idList = []
-        
+                
         if not ret:
             break
         gray_frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
         markerCorners, markerIds, rejectedCandidates = aruco.detectMarkers(gray_frame, markerDict, parameters=param_marker)
-        idList.append(markerIds)
-        print(idList)
         
         if markerCorners:
-            
             frame = aruco.drawDetectedMarkers(frame, markerCorners, markerIds)
+            
+            elapsed_time = time.time() - start_time
+            
+            if elapsed_time > interval:
+                print(convertTo2DArray(markerIds))
+                start_time = time.time()
+            
+            
                             
         cv.imshow("frame", frame)        
         if cv.waitKey(1) & 0xFF == ord('q'):
@@ -51,9 +57,14 @@ def detectFiducial():
     cap.release()
     cv.destroyAllWindows()
     
-
+def convertTo2DArray(markerIds):
+    ret = []
+    for i in range(len(markerIds)):
+        ret.append(markerIds[i][0])
+    return ret
 
 def main():
     detectFiducial()
+    
 if __name__ == '__main__':
     main()
