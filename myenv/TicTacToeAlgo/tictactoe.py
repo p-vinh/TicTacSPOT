@@ -6,20 +6,22 @@ import copy
 X = "X"
 O = "O"
 EMPTY = None
+boardState = [[None, None, None],
+              [None, None, None],
+              [None, None, None]]
 
 # Creates an empty board
 def initial_state():
-    return [[EMPTY, EMPTY, EMPTY],
-             [EMPTY, EMPTY, EMPTY],
-             [EMPTY, EMPTY, EMPTY]]
+    return boardState
     
+#Function that takes in a list of id int (array) [9]
 
 # Returns player who has the next turn on a board
 def player(board):
     X_count = sum(x.count(X) for x in board)
     O_count = sum(x.count(O) for x in board)
       
-    return X if X_count <= O_count else O
+    return X if X_count < O_count else O
 
 # Returns set of all possible actions (i, j) available on the board
 def actions(board):
