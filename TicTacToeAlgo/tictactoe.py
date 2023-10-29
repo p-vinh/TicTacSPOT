@@ -90,50 +90,63 @@ def utility(board):
     
 # Returns the optimal action for the current player on the board
 def minimax(board):
+    optimal_action = None
+    alpha = -math.inf
+    beta = math.inf
     
     if terminal(board):
         return utility(board)
     
     if player(board) == X:
         bestScore = -math.inf
-        bestMove = None
         
         for action in actions(board):
-            score = minScore(result(board, action))
+            score = minScore(result(board, action), alpha, beta)
             if bestScore < score:
                 bestScore = score
-                bestMove = action
-        return bestMove
+                optimal_action = action
+        return optimal_action
     else:
         bestScore = math.inf
-        bestMove = None
         
         for action in actions(board):
-            score = maxScore(result(board, action))
+            score = maxScore(result(board, action), alpha, beta)
             
             if bestScore > score:
                 bestScore = score
-                bestMove = action
-        return bestMove
+                optimal_action = action
+        return optimal_action
     
-def maxScore(board):
+def maxScore(board, alpha, beta):
     if terminal(board):
         return utility(board)
     
     bestScore = -math.inf
     
     for action in actions(board):
-        score = minScore(result(board, action))
+        score = minScore(result(board, action), alpha, beta)
         bestScore = max(score, bestScore)
+        
+        alpha = max(alpha, bestScore)
+        
+        if beta <= alpha:
+            break
+    
     return bestScore
 
-def minScore(board):
+def minScore(board, alpha, beta):
     if terminal(board):
         return utility(board)
     
     bestScore = math.inf
     
     for action in actions(board):
-        score = maxScore(result(board, action))
+        score = maxScore(result(board, action), alpha, beta)
         bestScore = min(score, bestScore)
+        
+        beta = min(beta, bestScore)
+        
+        if beta <= alpha:
+            break
+
     return bestScore
