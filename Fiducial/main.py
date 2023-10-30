@@ -13,6 +13,7 @@ import boardInput as bi
 general_settings, markers = process_config_file('.\\Fiducial\\tracker_config_file.ini')
 
 # DICT_APRILTAG_16h5 ---> small
+# DICT_APRILTAG_25h9 ---> medium
 # DICT_APRILTAG_36h11 ---> large
 
 def get_input():
@@ -27,12 +28,7 @@ def get_input():
             print("Invalid input. Try again.")
     return x
 
-def display_board(board):
-    """
-    Display the board on the console.
-    """
-    for row in board:
-        print(row)
+#------------------------------------------Generate Marker main function-----------------------------------------------------------
     
 def generateMarker():
     markerDict = aruco.getPredefinedDictionary(aruco.DICT_APRILTAG_16h5)
@@ -104,8 +100,7 @@ def detectFiducial():
 
                 
                 
-                player = ttt.player(bi.boardState)
-                
+                player = ttt.player(bi.boardState)  
                 start_time = time.time()
             
             
