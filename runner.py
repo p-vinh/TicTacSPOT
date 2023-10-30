@@ -15,9 +15,9 @@ white = (255, 255, 255)
 # Create screen
 screen = pygame.display.set_mode(size)
 
-mediumFont = pygame.font.Font("Fiducial\OpenSans-Regular.ttf", 28)
-largeFont = pygame.font.Font("Fiducial\OpenSans-Regular.ttf", 40)
-moveFont = pygame.font.Font("Fiducial\OpenSans-Regular.ttf", 60)
+mediumFont = pygame.font.Font("TicTacToeAlgo\\OpenSans-Regular.ttf", 28)
+largeFont = pygame.font.Font("TicTacToeAlgo\\OpenSans-Regular.ttf", 40)
+moveFont = pygame.font.Font("TicTacToeAlgo\\OpenSans-Regular.ttf", 60)
 
 
 user = None
@@ -116,7 +116,6 @@ while True:
             if ai_turn:
                 time.sleep(0.5)
                 move = ttt.minimax(board)
-                print(move)
                 board = ttt.result(board, move)
                 ai_turn = False
             else:
