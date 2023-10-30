@@ -3,21 +3,47 @@ from cv2 import aruco
 import numpy as np
 import time
 from queue import Queue
+
 from config_file_reader import process_config_file #This is a function in config_file_reader.py
 
+import sys
+import tictactoe as ttt
+import boardInput as bi
 
 general_settings, markers = process_config_file('.\\Fiducial\\tracker_config_file.ini')
 
+# DICT_APRILTAG_16h5 ---> small
+# DICT_APRILTAG_36h11 ---> large
 
+def get_input():
+    """
+    Get input from the user.
+    """
+    while True:
+        try:
+            x = int(input("Enter a number: "))
+            break
+        except ValueError:
+            print("Invalid input. Try again.")
+    return x
+
+def display_board(board):
+    """
+    Display the board on the console.
+    """
+    for row in board:
+        print(row)
+    
 def generateMarker():
     markerDict = aruco.getPredefinedDictionary(aruco.DICT_APRILTAG_16h5)
     for i in range(20):
         marker = aruco.generateImageMarker(markerDict, i, 700)
         cv.imwrite(f"Images\\marker{i}.jpg", marker)
     
-    
-def detectFiducial():
 
+
+#------------------------------------------Detect Fiducial main function----------------------------------------------------------- 
+def detectFiducial():
     markerDict = aruco.getPredefinedDictionary(aruco.DICT_APRILTAG_16h5)
         
     param_marker = aruco.DetectorParameters()
@@ -32,7 +58,10 @@ def detectFiducial():
     
     start_time = time.time()
     interval = 3
+    detectArray = [] 
+    player = ttt.X  
     while True:
+        # Detect     
         ret, frame = cap.read()
                 
         if not ret:
@@ -45,26 +74,63 @@ def detectFiducial():
             
             elapsed_time = time.time() - start_time
             
+            # Update Board
             if elapsed_time > interval:
-                print(convertTo2DArray(markerIds))
+                detectArray = convertTo2DArray(markerIds)
+                print("Input:")
+                print(detectArray)
+                bi.updateTotalPieces(bi)
+                valid = bi.checkValidInput(detectArray)
+                
+                if (valid):
+                    if (player == ttt.X): #Players Turn                   
+                        bi.updateBoard(detectArray,player,bi)
+                        print("Player is")
+                        print(player)
+                        bi.totalXPieces += 1
+                if (player == ttt.O): # AI Turn        
+                    print("AI Move: ")
+                    move = ttt.minimax(bi.boardState)
+                    print(move)
+                    bi.boardState = ttt.result(bi.boardState, move)
+
+                    bi.totalOPieces += 1
+                displayBoard()
+                
+                if ttt.terminal(bi.boardState):
+                    print("Winner is")
+                    print(ttt.winner(bi.boardState))
+                    break
+
+                
+                
+                player = ttt.player(bi.boardState)
+                
                 start_time = time.time()
             
             
-                            
-        cv.imshow("frame", frame)        
+        cv.imshow("frame", frame)  
+              
+        
+
+        
         if cv.waitKey(1) & 0xFF == ord('q'):
             break
     cap.release()
     cv.destroyAllWindows()
-    
+   
+def displayBoard():
+    for i in range(3):
+        for j in range(3):
+            print(bi.boardState[i][j], end=" ")
+        print()
+ 
 def convertTo2DArray(markerIds):
     ret = []
     for i in range(len(markerIds)):
         ret.append(markerIds[i][0])
     return ret
 
-def main():
-    detectFiducial()
     
 if __name__ == '__main__':
-    main()
+    detectFiducial()
