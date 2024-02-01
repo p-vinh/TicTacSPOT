@@ -1,2 +1,0 @@
-- Edit minimax algorithm to alpha beta pruning
-- Translate fiducial detection over to minimax algorithm
