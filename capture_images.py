@@ -4,6 +4,23 @@
 # is subject to the terms and conditions of the Boston Dynamics Software
 # Development Kit License (20191101-BDSDK-SL).
 
+# --------------------- IMPORTANT DETAIL ----------------------
+# 6xdn7qqsffud - WIFI NETWORK
+# sh384s6nnk6q - CONNECT TO TABLET/RUN SCRIPTS
+# PER camera
+
+# 50 indoors
+# - 25 on lines
+# - 25 not on lines 
+# 100 outdoors
+# - 50 on grass 
+# -- 25 in shade
+# -- 25 not in shade
+# - 50 on pavement
+# -- 25 in shade
+# -- 25 not in shade
+# ----------------------------------------------------------------
+
 import argparse
 import sys
 import os
