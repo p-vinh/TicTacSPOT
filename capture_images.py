@@ -4,7 +4,10 @@
 # is subject to the terms and conditions of the Boston Dynamics Software
 # Development Kit License (20191101-BDSDK-SL).
 
-# --------------------- IMPORTANT DETAIL ----------------------
+# --------------------- IMPORTANT DETAILS ----------------------
+# Diameter: 1 1/2in
+# Length: 3in
+# python3 capture_images.py 192.168.80.3 --image-source right_fisheye_image --folder dogtoy/images
 # 6xdn7qqsffud - WIFI NETWORK
 # sh384s6nnk6q - CONNECT TO TABLET/RUN SCRIPTS
 # PER camera
@@ -85,7 +88,7 @@ def main(argv):
         print('Wrote: ' + image_saved_path)
 
         # Wait for some time so we can drive the robot to a new position.
-        time.sleep(10)
+        time.sleep(7)
 
 
     return True
