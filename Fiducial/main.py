@@ -10,7 +10,7 @@ import sys
 import tictactoe as ttt
 import boardInput as bi
 
-general_settings, markers = process_config_file('.\\Fiducial\\tracker_config_file.ini')
+general_settings, markers = process_config_file('C:\\Users\\laure\\OneDrive\\Documents\\GitHub\\TicTacSPOT\\Fiducial\\tracker_config_file.ini')
 
 # DICT_APRILTAG_16h5 ---> small
 # DICT_APRILTAG_25h9 ---> medium
