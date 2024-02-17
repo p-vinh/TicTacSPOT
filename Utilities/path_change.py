@@ -11,10 +11,10 @@ def change_xml_path(directory, new_path):
             root = tree.getroot()
             
             path_elem = root.find('path')
-            
+            image_name = root.find('filename').text
+
             if path_elem is not None:
-                path_elem.text = new_path
-            
+                path_elem.text = new_path + image_name
             tree.write(file_path)
 
 
@@ -25,6 +25,9 @@ def main():
     args = parser.parse_args()
     
     change_xml_path(args.directory, args.new_path)
-    
+
+
+# Usage:
+# python path_change.py /path/to/xmls /new/path/to/replace
 if __name__ == '__main__':
     main()
