@@ -1,7 +1,7 @@
 <annotation>
 	<folder>left_fisheye</folder>
-	<filename>left_fisheye_image_0000.jpg</filename>
-	<path>C:\Users\vinhp\OneDrive\Documents\GitHub\TicTacSPOT\pieces\images\left_fisheye\left_fisheye_image_0000.jpg</path>
+	<filename>left_fisheye_image_0236.jpg</filename>
+	<path>C:\Users\vinhp\OneDrive\Documents\GitHub\TicTacSPOT\pieces\images\left_fisheye\left_fisheye_image_0236.jpg</path>
 	<source>
 		<database>Unknown</database>
 	</source>
@@ -17,9 +17,9 @@
 		<truncated>0</truncated>
 		<difficult>0</difficult>
 		<bndbox>
-			<xmin>527</xmin>
+			<xmin>317</xmin>
 			<ymin>299</ymin>
-			<xmax>592</xmax>
+			<xmax>367</xmax>
 			<ymax>339</ymax>
 		</bndbox>
 	</object>
