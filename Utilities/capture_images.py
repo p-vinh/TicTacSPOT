@@ -55,7 +55,7 @@ def main(argv):
         print('Error: output folder does not exist: ' + options.folder)
         return
 
-    counter = 301
+    counter = 315
 
     while True:
         # We want to capture from one camera at a time.
