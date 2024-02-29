@@ -2,3 +2,6 @@
 ./Scripts
 ./Lib
 ./pyvenv.cfg
+*.v2
+./Utilities/model
+*.data-00000-of-00001
