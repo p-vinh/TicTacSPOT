@@ -1,4 +1,4 @@
-python generate_tfrecord.py --xml_dir "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\annotations\annotations\test" --image_dir "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\images\images" --labels_path "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\annotations\annotations\label_map.pbtxt" --output_path "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\annotations\annotations\test.record"
+python generate_tfrecord.py --xml_dir "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\annotations\annotations\test" --image_dir "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\images" --labels_path "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\annotations\annotations\label_map.pbtxt" --output_path "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\annotations\annotations\test.record"
 
 
 

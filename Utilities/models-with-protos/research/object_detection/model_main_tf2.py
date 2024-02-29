@@ -72,6 +72,7 @@ FLAGS = flags.FLAGS
 
 
 def main(unused_argv):
+  tf.debugging.experimental.enable_dump_debug_info("C:\\Users\\CPP-UAV-CYBER-A\\Documents\\TicTacSPOT\\Utilities\\models\\my_model\\tmp\\tfdbg2_logdir", tensor_debug_mode="FULL_HEALTH", circular_buffer_size=-1)
   flags.mark_flag_as_required('model_dir')
   flags.mark_flag_as_required('pipeline_config_path')
   tf.config.set_soft_device_placement(True)

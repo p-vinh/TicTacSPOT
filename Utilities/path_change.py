@@ -15,7 +15,7 @@ def change_xml_path(directory, new_path):
             image_name = root.find('filename').text
 
             if path_elem is not None:
-                folder_elem = "images"
+                folder_elem.text = "images"
                 path_elem.text = new_path + image_name
             tree.write(file_path)
 
