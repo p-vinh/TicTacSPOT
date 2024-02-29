@@ -1,0 +1,5 @@
+python generate_tfrecord.py --xml_dir "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\annotations\annotations\test" --image_dir "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\images\images" --labels_path "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\annotations\annotations\label_map.pbtxt" --output_path "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\annotations\annotations\test.record"
+
+
+
+python model_main_tf2.py --model_dir="C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\Utilities\models\my_model" --pipeline_config_path="C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\Utilities\models\my_model\pipeline.config" --num_train_steps=20000

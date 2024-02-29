@@ -11,9 +11,11 @@ def change_xml_path(directory, new_path):
             root = tree.getroot()
             
             path_elem = root.find('path')
+            folder_elem = root.find('folder')
             image_name = root.find('filename').text
 
             if path_elem is not None:
+                folder_elem = "images"
                 path_elem.text = new_path + image_name
             tree.write(file_path)
 
