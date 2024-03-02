@@ -1,0 +1,26 @@
+<annotation>
+	<folder>images</folder>
+	<filename>frontleft_fisheye_image_0030.jpg</filename>
+	<path>C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\images\frontleft_fisheye_image_0030.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>480</width>
+		<height>640</height>
+		<depth>1</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>X</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>9</xmin>
+			<ymin>344</ymin>
+			<xmax>76</xmax>
+			<ymax>392</ymax>
+		</bndbox>
+	</object>
+</annotation>
