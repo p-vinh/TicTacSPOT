@@ -22,6 +22,17 @@
                 "--num_train_steps=20000"
             ],
             "console": "integratedTerminal"
+        },
+        {
+            "name": "Python Server Connection",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "C:\\Users\\CPP-UAV-CYBER-A\\Documents\\TicTacSPOT\\Utilities\\network_compute_server.py",
+            "args": [
+                "-m C:\\Users\\CPP-UAV-CYBER-A\\Documents\\TicTacSPOT\\Utilities\\models\\my_efficient_model\\saved_model C:\\Users\\CPP-UAV-CYBER-A\\Documents\\TicTacSPOT\\pieces\\annotations\\annotations\\label_map.pbtxt",
+                "-n \"tictactoe\"",
+                "192.168.80.3"
+            ]
         }
     ]
 }
