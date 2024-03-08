@@ -3,3 +3,7 @@ python generate_tfrecord.py --xml_dir "C:\Users\CPP-UAV-CYBER-A\Documents\TicTac
 
 
 python model_main_tf2.py --model_dir="C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\Utilities\models\my_model" --pipeline_config_path="C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\Utilities\models\my_model\pipeline.config" --num_train_steps=20000
+
+python exporter_main_v2.py --input_type image_tensor --pipeline_config_path "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\Utilities\models\my_tensorflow_lte\pipeline_file.config" --trained_checkpoint_dir "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\Utilities\models\my_tensorflow_lte" --output_directory "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\Utilities\exported_models"
+
+python eval.py -i "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\test" -m "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\Utilities\models\my_efficient_model\saved_model" -l "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\annotations\annotations\label_map.pbtxt" -o "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\output"
