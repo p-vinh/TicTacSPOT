@@ -47,6 +47,7 @@ from bosdyn.api import (header_pb2, image_pb2, network_compute_bridge_pb2,
                         world_object_pb2)
 from bosdyn.api.image_pb2 import ImageSource
 from bosdyn.client.image import ImageClient
+from object_detection.utils import label_map_util
 
 # This is a multiprocessing.Queue for communication between the main process and the
 # Tensorflow processes.
@@ -60,37 +61,41 @@ RESPONSE_QUEUE = Queue()
 class TensorflowModel:
     """ Wraps a tensorflow model in a way that allows online switching between models."""
 
-    def __init__(self, path, labels_path):
-        self.path = path
+    def __init__(self, path, label_path):
+        # self.path = path
 
-        self.detection_graph = tf.Graph()
-        with self.detection_graph.as_default():
-            od_graph_def = tf.compat.v1.GraphDef()
-            with tf.io.gfile.GFile(self.path, 'rb') as fid:
-                serialized_graph = fid.read()
-                od_graph_def.ParseFromString(serialized_graph)
-                tf.import_graph_def(od_graph_def, name='')
+        # # self.detection_graph = tf.Graph()
+        # # with self.detection_graph.as_default():
+        # #     od_graph_def = tf.compat.v1.GraphDef()
+        # #     with tf.io.gfile.GFile(self.path, 'rb') as fid:
+        # #         serialized_graph = fid.read()
+        # #         od_graph_def.ParseFromString(serialized_graph)
+        # #         tf.import_graph_def(od_graph_def, name='')
 
-        # Make sure we tell tensor flow that this is a different model.
-        self.default_graph = self.detection_graph.as_default()
-        self.sess = tf.compat.v1.Session(graph=self.detection_graph)
+        # # Make sure we tell tensor flow that this is a different model.
+        # self.default_graph = self.detection_graph.as_default()
+        # self.sess = tf.compat.v1.Session(graph=self.detection_graph)
 
-        # Definite input and output Tensors for detection_graph
-        self.image_tensor = self.detection_graph.get_tensor_by_name('image_tensor:0')
-        # Each box represents a part of the image where a particular object was detected.
-        self.detection_boxes = self.detection_graph.get_tensor_by_name('detection_boxes:0')
-        # Each score represent how level of confidence for each of the objects.
-        # Score is shown on the result image, together with the class label.
-        self.detection_scores = self.detection_graph.get_tensor_by_name('detection_scores:0')
-        self.detection_classes = self.detection_graph.get_tensor_by_name('detection_classes:0')
-        self.num_detections = self.detection_graph.get_tensor_by_name('num_detections:0')
+        # # Definite input and output Tensors for detection_graph
+        # self.image_tensor = self.detection_graph.get_tensor_by_name('image_tensor:0')
+        # # Each box represents a part of the image where a particular object was detected.
+        # self.detection_boxes = self.detection_graph.get_tensor_by_name('detection_boxes:0')
+        # # Each score represent how level of confidence for each of the objects.
+        # # Score is shown on the result image, together with the class label.
+        # self.detection_scores = self.detection_graph.get_tensor_by_name('detection_scores:0')
+        # self.detection_classes = self.detection_graph.get_tensor_by_name('detection_classes:0')
+        # self.num_detections = self.detection_graph.get_tensor_by_name('num_detections:0')
 
-        if labels_path is None:
-            self.labels = None
-        else:
-            # Load the class label mappings
-            self.labels = open(labels_path).read().strip().split('\n')
-            self.labels = {int(L.split(',')[1]): L.split(',')[0] for L in self.labels}
+        # if labels_path is None:
+        #     self.labels = None
+        # else:
+        #     # Load the class label mappings
+        #     self.labels = open(labels_path).read().strip().split('\n')
+        #     self.labels = {int(L.split(',')[1]): L.split(',')[0] for L in self.labels}
+        print(path)
+        self.detect_fn = tf.saved_model.load(path)
+        self.category_index = label_map_util.create_category_index_from_labelmap(label_path, use_display_name=True)
+        self.name = os.path.basename(os.path.dirname(path))
 
     def predict(self, image):
         """ Predict with this model. """
@@ -132,18 +137,20 @@ def process_images(options, model_extension):
     """Starts Tensorflow and detects objects in the incoming images.
     """
     models = {}
-    for f in os.listdir(options.model_dir):
+    for f in os.listdir(options.model[0][0]):
         if f in models:
             print(f'Warning: duplicate model name of "{f}", ignoring second model.')
             continue
 
-        path = os.path.join(options.model_dir, f)
+        path = os.path.join(options.model[0][0], f)
         if os.path.isfile(path) and path.endswith(model_extension):
             model_name = ''.join(f.rsplit(model_extension, 1))  # remove the extension
 
-            # reverse replace the extension
-            labels_file = '.csv'.join(f.rsplit(model_extension, 1))
-            labels_path = os.path.join(options.model_dir, labels_file)
+            # # reverse replace the extension
+            # labels_file = '.csv'.join(f.rsplit(model_extension, 1))
+            # labels_path = os.path.join(options.model[0][0], labels_file)
+
+            labels_path = options.model[0][1]
 
             if not os.path.isfile(labels_path):
                 labels_path = None
@@ -342,10 +349,7 @@ def main():
     model_extension = '.pb'
 
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '-d', '--model-dir', help=
-        'Directory of pre-trained models and (optionally) associated label files.\nExample directory contents: my_model.pb, my_classes.csv, my_model2.pb, my_classes2.csv.  CSV label format is: object,1<new line>thing,2',
-        required=True)
+    parser.add_argument('-m', '--model', help='[model[0][0]] [LABELS_FILE.pbtxt]: Path to a model\'s directory and path to its labels .pbtxt file', action='append', nargs=2, required=True)
     parser.add_argument('-p', '--port', help=f'Server\'s port number, default: {default_port}',
                         default=default_port)
     parser.add_argument('-n', '--no-debug', help='Disable writing debug images.',
@@ -361,6 +365,7 @@ def main():
                         ' e.g. "beta25-p" or "192.168.80.3"')
 
     options = parser.parse_args()
+    print(options.model[0])
 
     # Either we need a hostname to talk to the robot or the --no-registration argument.
     if not options.no_registration and (options.hostname is None or len(options.hostname) < 1):
@@ -371,14 +376,14 @@ def main():
         print('Error: cannot provide both a robot hostname and the --no-registration argument.')
         sys.exit(1)
 
-    if not os.path.isdir(options.model_dir):
-        print(f'Error: model directory ({options.model_dir}) not found or is not a directory.')
+    if not os.path.isdir(options.model[0][0]):
+        print(f'Error: model directory ({options.model[0][0]}) not found or is not a directory.')
         sys.exit(1)
 
     # Make sure there is at least one file ending in .pb in the directory.
     found_model = False
-    for f in os.listdir(options.model_dir):
-        path = os.path.join(options.model_dir, f)
+    for f in os.listdir(options.model[0][0]):
+        path = os.path.join(options.model[0][0], f)
         if os.path.isfile(path) and path.endswith(model_extension):
             found_model = True
             break
@@ -387,7 +392,7 @@ def main():
         print(
             f'Error: model directory must contain at least one model file with extension {model_extension}.  Found:'
         )
-        for f in os.listdir(options.model_dir):
+        for f in os.listdir(options.model):
             print(f'    {f}')
         sys.exit(1)
 
