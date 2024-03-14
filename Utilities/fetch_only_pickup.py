@@ -208,7 +208,7 @@ def main(argv):
                         required=True)
     parser.add_argument('-p', '--person-model',
                         help='Person detection model name running on the external server.')
-    parser.add_argument('-c', '--confidence-X',
+    parser.add_argument('-c', '--confidence-piece',
                         help='Minimum confidence to return an object for the dogoy (0.0 to 1.0)',
                         default=0.5, type=float)
     parser.add_argument('-e', '--confidence-person',
@@ -246,7 +246,7 @@ def main(argv):
                 # Capture an image and run ML on it.
                 X, image, vision_tform_dogtoy = get_obj_and_img(
                     network_compute_client, options.ml_service, options.model,
-                    options.confidence_dogtoy, kImageSources, 'X')
+                    options.confidence_piece, kImageSources, 'X')
 
                 if X is None:
                     # Didn't find anything, keep searching.
