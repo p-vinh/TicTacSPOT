@@ -74,6 +74,12 @@ def main():
         boxes = detections['detection_boxes']
         box = tuple(boxes[0].tolist())
 
+
+        print(num_detections)
+        print(detections['detection_boxes'])
+        print(detections['detection_classes'])
+        print(detections['detection_scores'])
+
         image_np_with_detections = image.copy()
         viz_utils.visualize_boxes_and_labels_on_image_array(
             image_np_with_detections,

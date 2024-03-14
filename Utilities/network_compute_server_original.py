@@ -62,7 +62,7 @@ def process_thread(args, request_queue, response_queue):
 
     while True:
         request = request_queue.get()
-        
+
         if isinstance(request, network_compute_bridge_pb2.ListAvailableModelsRequest):
             out_proto = network_compute_bridge_pb2.ListAvailableModelsResponse()
             for model_name in models:
