@@ -31,7 +31,7 @@ def get_input():
 #------------------------------------------Generate Marker main function-----------------------------------------------------------
     
 def generateMarker():
-    markerDict = aruco.getPredefinedDictionary(aruco.DICT_APRILTAG_16h5)
+    markerDict = aruco.getPredefinedDictionary(aruco.DICT_APRILTAG_36h11)
     for i in range(20):
         marker = aruco.generateImageMarker(markerDict, i, 700)
         cv.imwrite(f"Images\\marker{i}.jpg", marker)
@@ -40,9 +40,10 @@ def generateMarker():
 
 #------------------------------------------Detect Fiducial main function----------------------------------------------------------- 
 def detectFiducial():
-    markerDict = aruco.getPredefinedDictionary(aruco.DICT_APRILTAG_16h5)
+    markerDict = aruco.getPredefinedDictionary(aruco.DICT_APRILTAG_36h11)
         
     param_marker = aruco.DetectorParameters()
+    detector = aruco.ArucoDetector(markerDict, param_marker)
     cap = cv.VideoCapture(0)
     
     #################################
@@ -63,7 +64,7 @@ def detectFiducial():
         if not ret:
             break
         gray_frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-        markerCorners, markerIds, rejectedCandidates = aruco.detectMarkers(gray_frame, markerDict, parameters=param_marker)
+        markerCorners, markerIds, rejectedCandidates = detector.detectMarkers(gray_frame)
         
         if markerCorners:
             frame = aruco.drawDetectedMarkers(frame, markerCorners, markerIds)
