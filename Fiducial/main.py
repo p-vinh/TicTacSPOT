@@ -72,8 +72,19 @@ def get_input():
     return x
 
 #------------------------------------------Detect Fiducial main function----------------------------------------------------------- 
-def detectFiducial():
-    pass
+def detectFiducial(self):
+     #Get all fiducials that Spot detects with its perception system.
+        # Get all fiducial objects (an object of a specific type).
+        request_fiducials = [world_object_pb2.WORLD_OBJECT_APRILTAG]
+        fiducial_objects = self._world_object_client.list_world_objects(object_type=request_fiducials).world_objects
+        if len(fiducial_objects) > 0:
+            ids = set()
+            # Return the first detected fiducial id.
+            for fiducial in fiducial_objects:
+                ids.add(fiducial.apriltag_properties.tag_id)
+            return ids
+        # Return none if no fiducials are found.
+        return None
    
 def displayBoard():
     for i in range(3):
@@ -118,8 +129,8 @@ def main():
     fiducial_follower = None
     image_viewer = None
     
-    try:
-        with Exit():
+   # try:
+   #     with Exit()
             
             
 
