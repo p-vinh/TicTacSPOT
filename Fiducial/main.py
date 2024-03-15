@@ -10,6 +10,7 @@ import math
 import signal
 import sys
 import threading
+from dotenv import load_dotenv
 import time
 from sys import platform
 from PIL import Image
@@ -30,6 +31,7 @@ from bosdyn.client.robot_command import RobotCommandBuilder, RobotCommandClient,
 from bosdyn.client.robot_id import RobotIdClient, version_tuple
 from bosdyn.client.robot_state import RobotStateClient
 from bosdyn.client.world_object import WorldObjectClient
+from bosdyn.client.network_compute_bridge import NetworkComputeBridgeClient
 
 #pylint: disable=no-member
 LOGGER = logging.getLogger()
@@ -99,9 +101,14 @@ def convertTo2DArray(markerIds):
     return ret
 
 
-# example
-def main():
+# example python main.py -s tictactoe -m my_efficient_model -c 0.85 -d 0.5 --avoid-obstacles True
 
+#==================================Main Function===================================================
+def main():
+    load_dotenv()
+    username = os.getenv("USERNAME")
+    password = os.getenv("PASSWORD")
+#==================================Parse args===================================================
     parser = argparse.ArgumentParser()
     bosdyn.client.util.add_base_arguments(parser)
     parser.add_argument('-s', '--ml-service',
@@ -111,7 +118,7 @@ def main():
     parser.add_argument('-c', '--confidence-piece',
                         help='Minimum confidence to return an object for the dogoy (0.0 to 1.0)',
                         default=0.5, type=float)
-    parser.add_argument('--distance-margin', default=.5,
+    parser.add_argument('-d', '--distance-margin', default=.5,
                         help='Distance [meters] that the robot should stop from the fiducial.')
     parser.add_argument('--limit-speed', default=True, type=lambda x: (str(x).lower() == 'true'),
                         help='If the robot should limit its maximum speed.')
@@ -122,18 +129,35 @@ def main():
         '--use-world-objects', default=True, type=lambda x: (str(x).lower() == 'true'),
         help='If fiducials should be from the world object service or the apriltag library.')
     options = parser.parse_args()
-    # Start SPOT/Power On
-    sdk = create_standard_sdk('FollowFiducialClient')
+
+# ===============================Start SPOT/Power On===========================================
+    sdk = bosdyn.client.create_standard_sdk('TicTacSPOT')
+    sdk.register_service_client(NetworkComputeBridgeClient)
     robot = sdk.create_robot(options.hostname)
     
     fiducial_follower = None
     image_viewer = None
-    
-   # try:
-   #     with Exit()
-            
-            
+    bosdyn.client.util.authenticate_with_client_certificate(robot, username, password)
+    robot.time_sync.wait_for_sync()
 
+    network_compute_client = robot.ensure_client(NetworkComputeBridgeClient.default_service_name)
+    robot_state_client = robot.ensure_client(RobotStateClient.default_service_name)
+    command_client = robot.ensure_client(RobotCommandClient.default_service_name)
+    lease_client = robot.ensure_client(LeaseClient.default_service_name)
+    manipulate_api_client = robot.ensure_client(ManipulateApiClient.default_service_name)    
+
+    with bosdyn.client.lease.LeaseKeepAlive(lease_client, must_acquire=True, return_at_exit=True):
+        robot.logger.info("Powering on robot... This may take a few seconds.")
+        robot.power_on(timeout_sec=20)
+        assert robot.is_powered_on(), "Robot power on failed."
+        robot.logger.info("Robot is powered on.")
+
+        robot.logger.info("Commanding Spot to stand...")
+        blocking_stand(command_client)
+
+
+ # ===============================Get Lease===========================================
+            
     # elapsed_time = time.time() - start_time
     # interval = 3
     # while ttt.terminal(bi.boardState):
