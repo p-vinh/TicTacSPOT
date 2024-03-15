@@ -374,6 +374,7 @@ def main(argv):
 
                 holding_toy = not failed
 
+            time.sleep(5)
             # Move the arm to a carry position.
             grasp_holding_override = manipulation_api_pb2.ApiGraspOverride(
                 override_request=manipulation_api_pb2.ApiGraspOverride.OVERRIDE_HOLDING)

@@ -1,20 +1,63 @@
+#MAIN GAMEPALY LOOP
 import cv2 as cv
-from cv2 import aruco
 import numpy as np
-import time
+import argparse
 from queue import Queue
-
-from config_file_reader import process_config_file #This is a function in config_file_reader.py
-
-import sys
 import tictactoe as ttt
 import boardInput as bi
+import logging
+import math
+import signal
+import sys
+import threading
+import time
+from sys import platform
+from PIL import Image
+import bosdyn.client
+import bosdyn.client.util
+from bosdyn import geometry
+from bosdyn.api import geometry_pb2, image_pb2, trajectory_pb2, world_object_pb2
+from bosdyn.api.geometry_pb2 import SE2Velocity, SE2VelocityLimit, Vec2
+from bosdyn.api.spot import robot_command_pb2 as spot_command_pb2
+from bosdyn.client import ResponseError, RpcError, create_standard_sdk
+from bosdyn.client.frame_helpers import (BODY_FRAME_NAME, VISION_FRAME_NAME, get_a_tform_b,
+                                         get_vision_tform_body)
+from bosdyn.client.image import ImageClient, build_image_request
+from bosdyn.client.lease import LeaseClient
+from bosdyn.client.math_helpers import Quat, SE3Pose
+from bosdyn.client.power import PowerClient
+from bosdyn.client.robot_command import RobotCommandBuilder, RobotCommandClient, blocking_stand
+from bosdyn.client.robot_id import RobotIdClient, version_tuple
+from bosdyn.client.robot_state import RobotStateClient
+from bosdyn.client.world_object import WorldObjectClient
 
-general_settings, markers = process_config_file('.\\Fiducial\\tracker_config_file.ini')
+#pylint: disable=no-member
+LOGGER = logging.getLogger()
 
-# DICT_APRILTAG_16h5 ---> small
-# DICT_APRILTAG_25h9 ---> medium
-# DICT_APRILTAG_36h11 ---> large
+# Use this length to make sure we're commanding the head of the robot
+# to a position instead of the center.
+BODY_LENGTH = 1.1
+
+class Exit(object):
+    """Handle exiting on SIGTERM."""
+
+    def __init__(self):
+        self._kill_now = False
+        signal.signal(signal.SIGTERM, self._sigterm_handler)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, _type, _value, _traceback):
+        return False
+
+    def _sigterm_handler(self, _signum, _frame):
+        self._kill_now = True
+
+    @property
+    def kill_now(self):
+        """Return if sigterm received and program should end."""
+        return self._kill_now
 
 def get_input():
     """
@@ -28,92 +71,9 @@ def get_input():
             print("Invalid input. Try again.")
     return x
 
-#------------------------------------------Generate Marker main function-----------------------------------------------------------
-    
-def generateMarker():
-    markerDict = aruco.getPredefinedDictionary(aruco.DICT_APRILTAG_36h11)
-    for i in range(20):
-        marker = aruco.generateImageMarker(markerDict, i, 700)
-        cv.imwrite(f"Images\\marker{i}.jpg", marker)
-    
-
-
 #------------------------------------------Detect Fiducial main function----------------------------------------------------------- 
 def detectFiducial():
-    markerDict = aruco.getPredefinedDictionary(aruco.DICT_APRILTAG_36h11)
-        
-    param_marker = aruco.DetectorParameters()
-    detector = aruco.ArucoDetector(markerDict, param_marker)
-    cap = cv.VideoCapture(0)
-    
-    #################################
-    # This is the camera matrix, assembled from calibration.
-    camera_matrix = np.array( [[general_settings["camera_focal_length_x"], 0, general_settings["camera_center_x"]], [0, general_settings["camera_focal_length_y"], general_settings["camera_center_x"]], [0, 0, 1]], dtype = "double" )
-    # Coefficients are [k1, k2, p1, p2, k3] as per OpenCV documentation
-    distortion_coefficients = np.array( [general_settings["camera_k1"], general_settings["camera_k2"], general_settings["camera_p1"], general_settings["camera_p2"], general_settings["camera_k3"]] )
-    #################################
-    
-    start_time = time.time()
-    interval = 3
-    detectArray = [] 
-    player = ttt.X  
-    while True:
-        # Detect     
-        ret, frame = cap.read()
-                
-        if not ret:
-            break
-        gray_frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-        markerCorners, markerIds, rejectedCandidates = detector.detectMarkers(gray_frame)
-        
-        if markerCorners:
-            frame = aruco.drawDetectedMarkers(frame, markerCorners, markerIds)
-            
-            elapsed_time = time.time() - start_time
-            
-            # Update Board
-            if elapsed_time > interval:
-                detectArray = convertTo2DArray(markerIds)
-                print("Input:")
-                print(detectArray)
-                bi.updateTotalPieces(bi)
-                valid = bi.checkValidInput(detectArray)
-                
-                if (valid):
-                    if (player == ttt.X): #Players Turn                   
-                        bi.updateBoard(detectArray,player,bi)
-                        print("Player is")
-                        print(player)
-                        bi.totalXPieces += 1
-                if (player == ttt.O): # AI Turn        
-                    print("AI Move: ")
-                    move = ttt.minimax(bi.boardState)
-                    print(move)
-                    bi.boardState = ttt.result(bi.boardState, move)
-
-                    bi.totalOPieces += 1
-                displayBoard()
-                
-                if ttt.terminal(bi.boardState):
-                    print("Winner is")
-                    print(ttt.winner(bi.boardState))
-                    break
-
-                
-                
-                player = ttt.player(bi.boardState)  
-                start_time = time.time()
-            
-            
-        cv.imshow("frame", frame)  
-              
-        
-
-        
-        if cv.waitKey(1) & 0xFF == ord('q'):
-            break
-    cap.release()
-    cv.destroyAllWindows()
+    pass
    
 def displayBoard():
     for i in range(3):
@@ -127,6 +87,75 @@ def convertTo2DArray(markerIds):
         ret.append(markerIds[i][0])
     return ret
 
+
+# example
+def main():
+
+    parser = argparse.ArgumentParser()
+    bosdyn.client.util.add_base_arguments(parser)
+    parser.add_argument('-s', '--ml-service',
+                        help='Service name of external machine learning server.', required=True)
+    parser.add_argument('-m', '--model', help='Model name running on the external server.',
+                        required=True)
+    parser.add_argument('-c', '--confidence-piece',
+                        help='Minimum confidence to return an object for the dogoy (0.0 to 1.0)',
+                        default=0.5, type=float)
+    parser.add_argument('--distance-margin', default=.5,
+                        help='Distance [meters] that the robot should stop from the fiducial.')
+    parser.add_argument('--limit-speed', default=True, type=lambda x: (str(x).lower() == 'true'),
+                        help='If the robot should limit its maximum speed.')
+    parser.add_argument('--avoid-obstacles', default=False, type=lambda x:
+                        (str(x).lower() == 'true'),
+                        help='If the robot should have obstacle avoidance enabled.')
+    parser.add_argument(
+        '--use-world-objects', default=True, type=lambda x: (str(x).lower() == 'true'),
+        help='If fiducials should be from the world object service or the apriltag library.')
+    options = parser.parse_args()
+    # Start SPOT/Power On
+    sdk = create_standard_sdk('FollowFiducialClient')
+    robot = sdk.create_robot(options.hostname)
     
+    fiducial_follower = None
+    image_viewer = None
+    
+    try:
+        with Exit():
+            
+            
+
+    # elapsed_time = time.time() - start_time
+    # interval = 3
+    # while ttt.terminal(bi.boardState):
+    #     # Update Board
+    #     if elapsed_time > interval:
+    #         detectArray = convertTo2DArray(markerIds)
+    #         print("Input:")
+    #         print(detectArray)
+    #         bi.updateTotalPieces(bi)
+    #         valid = bi.checkValidInput(detectArray)
+            
+    #         if (valid):
+    #             if (player == ttt.X): #Players Turn                   
+    #                 bi.updateBoard(detectArray,player,bi)
+    #                 print("Player is")
+    #                 print(player)
+    #                 bi.totalXPieces += 1
+    #         if (player == ttt.O): # AI Turn        
+    #             print("AI Move: ")
+    #             move = ttt.minimax(bi.boardState)
+    #             print(move)
+    #             bi.boardState = ttt.result(bi.boardState, move)
+
+    #             bi.totalOPieces += 1
+    #         displayBoard()
+            
+    #         if ttt.terminal(bi.boardState):
+    #             print("Winner is")
+    #             print(ttt.winner(bi.boardState))
+
+            
+            
+    #         player = ttt.player(bi.boardState)  
+    #         start_time = time.time()
 if __name__ == '__main__':
-    detectFiducial()
+    main()

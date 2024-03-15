@@ -9,10 +9,10 @@ python exporter_main_v2.py --input_type image_tensor --pipeline_config_path "C:\
 python eval.py -i "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\test" -m "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\Utilities\models\my_efficient_model\saved_model" -l "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\annotations\annotations\label_map.pbtxt" -o "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\output"
 
 
-python network_compute_server.py -m "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\Utilities\models\my_efficient_model\saved_model" "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\annotations\annotations\label_map.pbtxt" -d -n "tictactoe" 192.168.80.3
+python .\pickup\network_compute_server.py -m "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\Utilities\models\my_efficient_model\saved_model" "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\annotations\annotations\label_map.pbtxt" -d -n "tictactoe" 192.168.80.3
 
 python tensorflow_server.py -m "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\Utilities\models\my_efficient_model\saved_model" "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\annotations\annotations\label_map.pbtxt" 192.168.80.3
 
-python identify_object.py --service tictactoe --confidence 0.5 --model my_efficient_model 192.168.80.3
+python .\test_pickup\identify_object.py --service tictactoe --confidence 0.5 --model my_efficient_model 192.168.80.3
 
-python fetch_only_pickup.py -s tictactoe -m my_efficient_model -c 0.8 192.168.80.3
+python .\pickup\fetch_only_pickup.py -s tictactoe -m my_efficient_model -c 0.8 192.168.80.3
