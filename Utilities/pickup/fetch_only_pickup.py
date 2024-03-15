@@ -16,7 +16,7 @@ from google.protobuf import wrappers_pb2
 import bosdyn.client
 import bosdyn.client.util
 from bosdyn.api import (basic_command_pb2, geometry_pb2, image_pb2, manipulation_api_pb2,
-                        network_compute_bridge_pb2)
+                        network_compute_bridge_pb2, robot_state_pb2)
 from bosdyn.client import frame_helpers, math_helpers
 from bosdyn.client.lease import LeaseClient, LeaseKeepAlive
 from bosdyn.client.manipulation_api_client import ManipulationApiClient
@@ -270,21 +270,21 @@ def main(argv):
 
                 # NOTE: we'll enable this code in Part 5, when we understand it.
                 # -------------------------
-                # # Walk to the object.
-                # walk_rt_vision, heading_rt_vision = compute_stand_location_and_yaw(
-                #   vision_tform_dogtoy, robot_state_client, distance_margin=1.0)
+                # Walk to the object.
+                walk_rt_vision, heading_rt_vision = compute_stand_location_and_yaw(
+                  vision_tform_dogtoy, robot_state_client, distance_margin=1.0)
 
-                # se2_pose = geometry_pb2.SE2Pose(
-                #   position=geometry_pb2.Vec2(x=walk_rt_vision[0], y=walk_rt_vision[1]),
-                #   angle=heading_rt_vision)
-                # move_cmd = RobotCommandBuilder.synchro_se2_trajectory_command(
-                #   se2_pose,
-                #   frame_name=frame_helpers.VISION_FRAME_NAME,
-                #   params=get_walking_params(0.5, 0.5))
-                # end_time = 5.0
-                # cmd_id = command_client.robot_command(command=move_cmd,
-                #                                       end_time_secs=time.time() +
-                #                                       end_time)
+                se2_pose = geometry_pb2.SE2Pose(
+                  position=geometry_pb2.Vec2(x=walk_rt_vision[0], y=walk_rt_vision[1]),
+                  angle=heading_rt_vision)
+                move_cmd = RobotCommandBuilder.synchro_se2_trajectory_command(
+                  se2_pose,
+                  frame_name=frame_helpers.VISION_FRAME_NAME,
+                  params=get_walking_params(0.5, 0.5))
+                end_time = 5.0
+                cmd_id = command_client.robot_command(command=move_cmd,
+                                                      end_time_secs=time.time() +
+                                                      end_time)
 
                 # # Wait until the robot reports that it is at the goal.
                 # block_for_trajectory_cmd(command_client, cmd_id, timeout_sec=5, verbose=True)
@@ -375,20 +375,113 @@ def main(argv):
                 holding_toy = not failed
 
             # Move the arm to a carry position.
-            print('')
-            print('Grasp finished, search for a person...')
-            carry_cmd = RobotCommandBuilder.arm_carry_command()
-            command_client.robot_command(carry_cmd)
+            grasp_holding_override = manipulation_api_pb2.ApiGraspOverride(
+                override_request=manipulation_api_pb2.ApiGraspOverride.OVERRIDE_HOLDING)
+            
+            carriable_and_stowable_override = manipulation_api_pb2.ApiGraspedCarryStateOverride(
+                override_request=robot_state_pb2.ManipulatorState.CARRY_STATE_CARRIABLE_AND_STOWABLE)
+            
+            override_request = manipulation_api_pb2.ApiGraspOverrideRequest(
+                api_grasp_override=grasp_holding_override,
+                carry_state_override=carriable_and_stowable_override)
+            manipulation_api_client.grasp_override_command(override_request)
 
-            # Wait for the carry command to finish
+            # Wait for the override to take effect before trying to move the arm.
+            wait_until_grasp_state_updates(override_request, robot_state_client)
+
+            print('')
+            print('Grasp finished, Carrying...')
+            carry_cmd = RobotCommandBuilder.arm_carry_command()
+            
+            block_until_arm_arrives(command_client, command_client.robot_command(carry_cmd), 2.0)
+
+            print('Carrying Finished, Stowing...')
+            stow = RobotCommandBuilder.arm_stow_command()
+
+            block_until_arm_arrives(command_client, command_client.robot_command(stow), 3.0)
+                        
+            # Wait for the stow command to finish
             time.sleep(0.75)
 
             # For now, we'll just exit...
             print('')
             print('Done for now, returning control to tablet in 5 seconds...')
             time.sleep(5.0)
+
+            # PLACING FUNCTION WILL BE HERE ALONG WITH MINIMAX
             break
 
+def compute_stand_location_and_yaw(vision_tform_target, robot_state_client, distance_margin):
+    # Compute drop-off location:
+    #   Draw a line from Spot to the person
+    #   Back up 2.0 meters on that line
+    vision_tform_robot = frame_helpers.get_a_tform_b(
+        robot_state_client.get_robot_state().kinematic_state.transforms_snapshot,
+        frame_helpers.VISION_FRAME_NAME, frame_helpers.GRAV_ALIGNED_BODY_FRAME_NAME)
+
+    # Compute vector between robot and person
+    robot_rt_person_ewrt_vision = [
+        vision_tform_robot.x - vision_tform_target.x, vision_tform_robot.y - vision_tform_target.y,
+        vision_tform_robot.z - vision_tform_target.z
+    ]
+
+    # Compute the unit vector.
+    if np.linalg.norm(robot_rt_person_ewrt_vision) < 0.01:
+        robot_rt_person_ewrt_vision_hat = vision_tform_robot.transform_point(1, 0, 0)
+    else:
+        robot_rt_person_ewrt_vision_hat = robot_rt_person_ewrt_vision / np.linalg.norm(
+            robot_rt_person_ewrt_vision)
+
+    # Starting at the person, back up meters along the unit vector.
+    drop_position_rt_vision = [
+        vision_tform_target.x + robot_rt_person_ewrt_vision_hat[0] * distance_margin,
+        vision_tform_target.y + robot_rt_person_ewrt_vision_hat[1] * distance_margin,
+        vision_tform_target.z + robot_rt_person_ewrt_vision_hat[2] * distance_margin
+    ]
+
+    # We also want to compute a rotation (yaw) so that we will face the person when dropping.
+    # We'll do this by computing a rotation matrix with X along
+    #   -robot_rt_person_ewrt_vision_hat (pointing from the robot to the person) and Z straight up:
+    xhat = -robot_rt_person_ewrt_vision_hat
+    zhat = [0.0, 0.0, 1.0]
+    yhat = np.cross(zhat, xhat)
+    mat = np.matrix([xhat, yhat, zhat]).transpose()
+    heading_rt_vision = math_helpers.Quat.from_matrix(mat).to_yaw()
+
+    return drop_position_rt_vision, heading_rt_vision
+
+def get_walking_params(max_linear_vel, max_rotation_vel):
+    max_vel_linear = geometry_pb2.Vec2(x=max_linear_vel, y=max_linear_vel)
+    max_vel_se2 = geometry_pb2.SE2Velocity(linear=max_vel_linear, angular=max_rotation_vel)
+    vel_limit = geometry_pb2.SE2VelocityLimit(max_vel=max_vel_se2)
+    params = RobotCommandBuilder.mobility_params()
+    params.vel_limit.CopyFrom(vel_limit)
+    return params
+
+def pose_dist(pose1, pose2):
+    diff_vec = [pose1.x - pose2.x, pose1.y - pose2.y, pose1.z - pose2.z]
+    return np.linalg.norm(diff_vec)
+
+def wait_until_grasp_state_updates(grasp_override_command, robot_state_client):
+    updated = False
+    has_grasp_override = grasp_override_command.HasField("api_grasp_override")
+    has_carry_state_override = grasp_override_command.HasField("carry_state_override")
+
+    while not updated:
+        robot_state = robot_state_client.get_robot_state()
+
+        grasp_state_updated = (robot_state.manipulator_state.is_gripper_holding_item and
+                               (grasp_override_command.api_grasp_override.override_request
+                                == manipulation_api_pb2.ApiGraspOverride.OVERRIDE_HOLDING)) or (
+                                    not robot_state.manipulator_state.is_gripper_holding_item and
+                                    grasp_override_command.api_grasp_override.override_request
+                                    == manipulation_api_pb2.ApiGraspOverride.OVERRIDE_NOT_HOLDING)
+        carry_state_updated = has_carry_state_override and (
+            robot_state.manipulator_state.carry_state
+            == grasp_override_command.carry_state_override.override_request)
+        updated = (not has_grasp_override or
+                   grasp_state_updated) and (not has_carry_state_override or carry_state_updated)
+        time.sleep(0.1)
 
 if __name__ == '__main__':
     if not main(sys.argv[1:]):
