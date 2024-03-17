@@ -1,5 +1,3 @@
-
-
 import math
 import copy
 
@@ -24,12 +22,20 @@ def player(board):
 
 # Returns set of all possible actions (i, j) available on the board
 def actions(board):
-    actions = set()
+    actions = set()  # Use a set instead of a list to store unique actions
     
     for i, row in enumerate(board):
         for j, cell in enumerate(row):
-            if cell in EMPTY:
+            if cell != "X" and cell != "O":
                 actions.add((i, j))
+
+
+    #Old code ---> Takes in a board with id numbers + X + O
+    # for i, row in enumerate(board):
+    #     for j, cell in enumerate(row):
+    #         if cell in EMPTY:
+    #             actions.add((i, j))
+
     return actions
 
 # Returns the board that results from making move (i,j)

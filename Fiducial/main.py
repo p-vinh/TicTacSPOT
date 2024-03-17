@@ -74,20 +74,53 @@ def get_input():
     return x
 
 #------------------------------------------Detect Fiducial main function----------------------------------------------------------- 
-def detectFiducial(self):
+#Call this function to start and detect board fiducials
+# - Returns a set of fiducials when it finds the expected number of fiducials
+def detectFiducial(self, int expectedNumberOfFiducials):
+    int found = 0
+    fiducial = set()
+     while found != expectedNumberOfFiducials:
+            if self._use_world_object_service:
+                # Get the all fiducial objects
+                fiducial = self.find_fiducials()
+                if fiducial is not None:
+                    found = len(fiducial)
+
+            if detected_fiducial:
+                print(fiducial)
+            else:
+                print('Trying to find fiducials...')
+
+    return fiducial
+     
+#Find Fiducials and return a set of id numbers
+def find_fiducials(self):
      #Get all fiducials that Spot detects with its perception system.
         # Get all fiducial objects (an object of a specific type).
         request_fiducials = [world_object_pb2.WORLD_OBJECT_APRILTAG]
         fiducial_objects = self._world_object_client.list_world_objects(object_type=request_fiducials).world_objects
         if len(fiducial_objects) > 0:
             ids = set()
-            # Return the first detected fiducial id.
+            # Find fiducials id
             for fiducial in fiducial_objects:
-                ids.add(fiducial.apriltag_properties.tag_id)
-            return ids
+                if(fiducial.apriltag_properties.tag_id != 543) #Ignore fiducial id that represents the board
+                {
+                    ids.add(fiducial.apriltag_properties.tag_id)
+                }
+            #IMPORTANT, it sorts the list of IDS in order
+            sorted_list = list(ids)
+            sorted_list.sort()
+            return sorted_list
         # Return none if no fiducials are found.
         return None
-   
+
+#needed for SPOT to detect fiducials 
+def check_if_version_has_world_objects(self, robot_id):
+        """Check that software version contains world object service."""
+        # World object service was released in spot-sdk version 1.2.0
+        return version_tuple(robot_id.software_release.version) >= (1, 2, 0)
+
+ 
 def displayBoard():
     for i in range(3):
         for j in range(3):
@@ -146,14 +179,60 @@ def main():
     lease_client = robot.ensure_client(LeaseClient.default_service_name)
     manipulate_api_client = robot.ensure_client(ManipulateApiClient.default_service_name)    
 
+    
     with bosdyn.client.lease.LeaseKeepAlive(lease_client, must_acquire=True, return_at_exit=True):
+        
+        #Powering up robot
         robot.logger.info("Powering on robot... This may take a few seconds.")
-        robot.power_on(timeout_sec=20)
+        robot.power_on(timeout_sec=40)
         assert robot.is_powered_on(), "Robot power on failed."
         robot.logger.info("Robot is powered on.")
 
+        #Spot Stand Up
         robot.logger.info("Commanding Spot to stand...")
         blocking_stand(command_client)
+        time.sleep(.35)
+
+        #------------------------------Initialize Values-------------------------------------
+        #Put id values of board in this order:
+        #       Ex: initial_values = [0,1,2,3,4,5,6,7,8]
+        #          
+        #     Represents a board with ids in this order...
+        #           0 1 2
+        #           3 4 5
+        #           6 7 8
+        initial_values = [0,1,2,3,4,5,6,7,8]
+
+        #Player expected to be first
+        board = bi.BoardInput()
+        board.changeInitialState(initial_values)
+        board.printBoard()
+        int expectedNumberOfFiducials = 8
+        player = ttt.O
+        
+        #Get Fiducials
+        # while loop insert here <----------Game Loop starts
+
+        #1. Find Fidicials and Update Board ----> Player move
+        setOfIds = detectFiducial(expectedNumberOfFiducials)
+        board.updateBoard(setOfIds, player)
+        
+        print("Detection done, found players move....")
+        print("-----------------Board State:-------------")
+        board.printBoard()
+        board.addOPiece()
+        board.updateTotalPieces()
+        print("Player pieces:" + board.getOPieces)
+        print("SPOT's Pieces: " + board.getXPieces)
+        print("Total Pieces on board: " + board.getTotalPieces)
+        print("------------------------------------------")
+
+        #2. Minimax
+        move = ttt.minimax(board.getBoardState())
+        print(move)
+
+
+
 
 
  # ===============================Get Lease===========================================
