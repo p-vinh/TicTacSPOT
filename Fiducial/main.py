@@ -105,10 +105,8 @@ def find_fiducials(self):
             ids = set()
             # Find fiducials id
             for fiducial in fiducial_objects:
-                if(fiducial.apriltag_properties.tag_id != 543) #Ignore fiducial id that represents the board
-                {
+                if(fiducial.apriltag_properties.tag_id != 543): #Ignore fiducial id that represents the board
                     ids.add(fiducial.apriltag_properties.tag_id)
-                }
             #IMPORTANT, it sorts the list of IDS in order
             sorted_list = list(ids)
             sorted_list.sort()
