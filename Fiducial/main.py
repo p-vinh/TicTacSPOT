@@ -1,4 +1,5 @@
-#MAIN GAMEPALY LOOP
+#MAIN GAMEPLAY LOOP
+import os
 import cv2 as cv
 import numpy as np
 import argparse
@@ -31,7 +32,8 @@ from bosdyn.client.robot_command import RobotCommandBuilder, RobotCommandClient,
 from bosdyn.client.robot_id import RobotIdClient, version_tuple
 from bosdyn.client.robot_state import RobotStateClient
 from bosdyn.client.world_object import WorldObjectClient
-from bosdyn.client.network_compute_bridge import NetworkComputeBridgeClient
+from bosdyn.client.network_compute_bridge_client import NetworkComputeBridgeClient
+from bosdyn.client.manipulation_api_client import ManipulationApiClient
 
 #pylint: disable=no-member
 LOGGER = logging.getLogger()
@@ -76,21 +78,21 @@ def get_input():
 #------------------------------------------Detect Fiducial main function----------------------------------------------------------- 
 #Call this function to start and detect board fiducials
 # - Returns a set of fiducials when it finds the expected number of fiducials
-def detectFiducial(self, int expectedNumberOfFiducials):
-    int found = 0
+def detectFiducial(self, expectedNumberOfFiducials):
+    found = 0
     fiducial = set()
-     while found != expectedNumberOfFiducials:
+    detected_fiducial = False
+    while found != expectedNumberOfFiducials:
             if self._use_world_object_service:
                 # Get the all fiducial objects
                 fiducial = self.find_fiducials()
                 if fiducial is not None:
                     found = len(fiducial)
-
+                    detected_fiducial = True
             if detected_fiducial:
                 print(fiducial)
             else:
                 print('Trying to find fiducials...')
-
     return fiducial
      
 #Find Fiducials and return a set of id numbers
@@ -177,7 +179,7 @@ def main():
     robot_state_client = robot.ensure_client(RobotStateClient.default_service_name)
     command_client = robot.ensure_client(RobotCommandClient.default_service_name)
     lease_client = robot.ensure_client(LeaseClient.default_service_name)
-    manipulate_api_client = robot.ensure_client(ManipulateApiClient.default_service_name)    
+    manipulation_api_client = robot.ensure_client(ManipulationApiClient.default_service_name)
 
     
     with bosdyn.client.lease.LeaseKeepAlive(lease_client, must_acquire=True, return_at_exit=True):
@@ -202,13 +204,13 @@ def main():
         #           3 4 5
         #           6 7 8
         initial_values = [0,1,2,3,4,5,6,7,8]
+        expectedNumberOfFiducials = 8
+        player = ttt.O
 
         #Player expected to be first
         board = bi.BoardInput()
         board.changeInitialState(initial_values)
         board.printBoard()
-        int expectedNumberOfFiducials = 8
-        player = ttt.O
         
         #Get Fiducials
         # while loop insert here <----------Game Loop starts
