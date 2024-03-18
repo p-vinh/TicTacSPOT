@@ -15,4 +15,4 @@ python tensorflow_server.py -m "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\Ut
 
 python .\test_pickup\identify_object.py --service tictactoe --confidence 0.5 --model my_efficient_model 192.168.80.3
 
-python .\pickup\fetch_only_pickup.py -s tictactoe -m my_efficient_model -c 0.8 192.168.80.3
+python .\pickup\fetch_only_pickup.py -s tictactoe -m my_efficient_model -c 0.85 192.168.80.3
