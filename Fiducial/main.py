@@ -35,6 +35,8 @@ from bosdyn.client.world_object import WorldObjectClient
 from bosdyn.client.network_compute_bridge_client import NetworkComputeBridgeClient
 from bosdyn.client.manipulation_api_client import ManipulationApiClient
 
+import fetch_only_pickup as fetch
+
 #pylint: disable=no-member
 LOGGER = logging.getLogger()
 BOARD_REF = 543
@@ -251,8 +253,34 @@ def main():
         move, id = ttt.minimax(board.getBoardState())
         print(move, id)
         
-
-
+        #3. Pick Piece
+        robot.logger.info('Sending Robot Pickup Request')
+        fetch.pick_up(options.model, options.ml_service, options.confidence_piece, robot,
+                      network_compute_client, robot_state_client, command_client,
+                      lease_client, manipulation_api_client)
+        time.sleep(1) # Wait for pickup to finish
+        
+        # 4. Set up Position (Denise and Mandy)
+        
+        # 5. Backup From Reference Point
+        
+        
+        # 6. Gameover?
+        piece = ttt.winner(board.getBoardState())
+        if piece == ttt.X:
+            print("Spot wins")
+            # DANCE
+            # break For infinite game loop
+        elif piece == ttt.O:
+            print("Player wins")
+            # break
+        elif piece == None:
+            print("Tie")
+            # break
+        
+        # Wait for player to place their piece
+        time.sleep(10)            
+            
 
 
 

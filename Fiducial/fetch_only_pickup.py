@@ -198,219 +198,181 @@ def block_for_trajectory_cmd(command_client, cmd_id, timeout_sec=None, verbose=F
 
     return False
 
-
-def main(argv):
-    parser = argparse.ArgumentParser()
-    bosdyn.client.util.add_base_arguments(parser)
-    parser.add_argument('-s', '--ml-service',
-                        help='Service name of external machine learning server.', required=True)
-    parser.add_argument('-m', '--model', help='Model name running on the external server.',
-                        required=True)
-    parser.add_argument('-p', '--person-model',
-                        help='Person detection model name running on the external server.')
-    parser.add_argument('-c', '--confidence-piece',
-                        help='Minimum confidence to return an object for the dogoy (0.0 to 1.0)',
-                        default=0.5, type=float)
-    parser.add_argument('-e', '--confidence-person',
-                        help='Minimum confidence for person detection (0.0 to 1.0)', default=0.6,
-                        type=float)
-    options = parser.parse_args(argv)
-
+def pick_up(model, ml_service, confidence, robot, network_compute_client, robot_state_client, command_client, lease_client, manipulation_api_client):
     cv2.namedWindow("Fetch")
     cv2.waitKey(500)
-
-    sdk = bosdyn.client.create_standard_sdk('SpotFetchClient')
-    sdk.register_service_client(NetworkComputeBridgeClient)
-    robot = sdk.create_robot(options.hostname)
-    bosdyn.client.util.authenticate(robot)
-
     # Time sync is necessary so that time-based filter requests can be converted
     robot.time_sync.wait_for_sync()
 
-    network_compute_client = robot.ensure_client(NetworkComputeBridgeClient.default_service_name)
-    robot_state_client = robot.ensure_client(RobotStateClient.default_service_name)
-    command_client = robot.ensure_client(RobotCommandClient.default_service_name)
-    lease_client = robot.ensure_client(LeaseClient.default_service_name)
-    manipulation_api_client = robot.ensure_client(ManipulationApiClient.default_service_name)
-
     # This script assumes the robot is already standing via the tablet.  We'll take over from the
     # tablet.
-    lease_client.take()
-    with bosdyn.client.lease.LeaseKeepAlive(lease_client, must_acquire=True, return_at_exit=True):
-        # Store the position of the hand at the last toy drop point.
-        vision_tform_hand_at_drop = None
+    
+    vision_tform_hand_at_drop = None
 
-        while True:
-            holding_toy = False
-            while not holding_toy:
-                # Capture an image and run ML on it.
-                X, image, vision_tform_dogtoy = get_obj_and_img(
-                    network_compute_client, options.ml_service, options.model,
-                    options.confidence_piece, kImageSources, 'X')
+    while True:
+        holding_piece = False
+        while not holding_piece:
+            # Capture an image and run ML on it.
+            X, image, vision_tform_dogtoy = get_obj_and_img(
+                network_compute_client, ml_service, model,
+                confidence, kImageSources, 'X')
 
-                if X is None:
-                    # Didn't find anything, keep searching.
-                    continue
+            if X is None:
+                # Didn't find anything, keep searching.
+                continue
 
-                # If we have already dropped the toy off, make sure it has moved a sufficient amount before
-                # picking it up again
-                if vision_tform_hand_at_drop is not None and pose_dist(
-                        vision_tform_hand_at_drop, vision_tform_dogtoy) < 0.5:
-                    print('Found X, but it hasn\'t moved.  Waiting...')
-                    time.sleep(1)
-                    continue
+            # If we have already dropped the toy off, make sure it has moved a sufficient amount before
+            # picking it up again
+            if vision_tform_hand_at_drop is not None and pose_dist(
+                    vision_tform_hand_at_drop, vision_tform_dogtoy) < 0.5:
+                print('Found X, but it hasn\'t moved.  Waiting...')
+                time.sleep(1)
+                continue
 
-                print('Found X...')
+            print('Found X...')
 
-                # Got a X.  Request pick up.
+            # Got a X.  Request pick up.
 
-                # Stow the arm in case it is deployed
-                stow_cmd = RobotCommandBuilder.arm_stow_command()
-                command_client.robot_command(stow_cmd)
+            # Stow the arm in case it is deployed
+            stow_cmd = RobotCommandBuilder.arm_stow_command()
+            command_client.robot_command(stow_cmd)
 
-                # NOTE: we'll enable this code in Part 5, when we understand it.
-                # -------------------------
-                # Walk to the object.
-                walk_rt_vision, heading_rt_vision = compute_stand_location_and_yaw(
-                  vision_tform_dogtoy, robot_state_client, distance_margin=1.0)
+            # NOTE: we'll enable this code in Part 5, when we understand it.
+            # -------------------------
+            # Walk to the object.
+            walk_rt_vision, heading_rt_vision = compute_stand_location_and_yaw(
+                vision_tform_dogtoy, robot_state_client, distance_margin=1.0)
 
-                se2_pose = geometry_pb2.SE2Pose(
-                  position=geometry_pb2.Vec2(x=walk_rt_vision[0], y=walk_rt_vision[1]),
-                  angle=heading_rt_vision)
-                move_cmd = RobotCommandBuilder.synchro_se2_trajectory_command(
-                  se2_pose,
-                  frame_name=frame_helpers.VISION_FRAME_NAME,
-                  params=get_walking_params(0.5, 0.5))
-                end_time = 5.0
-                cmd_id = command_client.robot_command(command=move_cmd,
-                                                      end_time_secs=time.time() +
-                                                      end_time)
+            se2_pose = geometry_pb2.SE2Pose(
+                position=geometry_pb2.Vec2(x=walk_rt_vision[0], y=walk_rt_vision[1]),
+                angle=heading_rt_vision)
+            move_cmd = RobotCommandBuilder.synchro_se2_trajectory_command(
+                se2_pose,
+                frame_name=frame_helpers.VISION_FRAME_NAME,
+                params=get_walking_params(0.5, 0.5))
+            end_time = 5.0
+            cmd_id = command_client.robot_command(command=move_cmd,
+                                                    end_time_secs=time.time() +
+                                                    end_time)
 
-                # # Wait until the robot reports that it is at the goal.
-                # block_for_trajectory_cmd(command_client, cmd_id, timeout_sec=5, verbose=True)
-                # -------------------------
+            # # Wait until the robot reports that it is at the goal.
+            # block_for_trajectory_cmd(command_client, cmd_id, timeout_sec=5, verbose=True)
+            # -------------------------
 
-                # The ML result is a bounding box.  Find the center.
-                (center_px_x, center_px_y) = find_center_px(X.image_properties.coordinates)
+            # The ML result is a bounding box.  Find the center.
+            (center_px_x, center_px_y) = find_center_px(X.image_properties.coordinates)
 
-                # Request Pick Up on that pixel.
-                pick_vec = geometry_pb2.Vec2(x=center_px_x, y=center_px_y)
-                grasp = manipulation_api_pb2.PickObjectInImage(
-                    pixel_xy=pick_vec,
-                    transforms_snapshot_for_camera=image.shot.transforms_snapshot,
-                    frame_name_image_sensor=image.shot.frame_name_image_sensor,
-                    camera_model=image.source.pinhole)
+            # Request Pick Up on that pixel.
+            pick_vec = geometry_pb2.Vec2(x=center_px_x, y=center_px_y)
+            grasp = manipulation_api_pb2.PickObjectInImage(
+                pixel_xy=pick_vec,
+                transforms_snapshot_for_camera=image.shot.transforms_snapshot,
+                frame_name_image_sensor=image.shot.frame_name_image_sensor,
+                camera_model=image.source.pinhole)
 
-                # We can specify where in the gripper we want to grasp. About halfway is generally good for
-                # small objects like this. For a bigger object like a shoe, 0 is better (use the entire
-                # gripper)
-                grasp.grasp_params.grasp_palm_to_fingertip = 0.6
+            # We can specify where in the gripper we want to grasp. About halfway is generally good for
+            # small objects like this. For a bigger object like a shoe, 0 is better (use the entire
+            # gripper)
+            grasp.grasp_params.grasp_palm_to_fingertip = 0.6
 
-                # Tell the grasping system that we want a top-down grasp.
+            # Tell the grasping system that we want a top-down grasp.
 
-                # Add a constraint that requests that the x-axis of the gripper is pointing in the
-                # negative-z direction in the vision frame.
+            # Add a constraint that requests that the x-axis of the gripper is pointing in the
+            # negative-z direction in the vision frame.
 
-                # The axis on the gripper is the x-axis.
-                axis_on_gripper_ewrt_gripper = geometry_pb2.Vec3(x=1, y=0, z=0)
+            # The axis on the gripper is the x-axis.
+            axis_on_gripper_ewrt_gripper = geometry_pb2.Vec3(x=1, y=0, z=0)
 
-                # The axis in the vision frame is the negative z-axis
-                axis_to_align_with_ewrt_vision = geometry_pb2.Vec3(x=0, y=0, z=-1)
+            # The axis in the vision frame is the negative z-axis
+            axis_to_align_with_ewrt_vision = geometry_pb2.Vec3(x=0, y=0, z=-1)
 
-                # Add the vector constraint to our proto.
-                constraint = grasp.grasp_params.allowable_orientation.add()
-                constraint.vector_alignment_with_tolerance.axis_on_gripper_ewrt_gripper.CopyFrom(
-                    axis_on_gripper_ewrt_gripper)
-                constraint.vector_alignment_with_tolerance.axis_to_align_with_ewrt_frame.CopyFrom(
-                    axis_to_align_with_ewrt_vision)
+            # Add the vector constraint to our proto.
+            constraint = grasp.grasp_params.allowable_orientation.add()
+            constraint.vector_alignment_with_tolerance.axis_on_gripper_ewrt_gripper.CopyFrom(
+                axis_on_gripper_ewrt_gripper)
+            constraint.vector_alignment_with_tolerance.axis_to_align_with_ewrt_frame.CopyFrom(
+                axis_to_align_with_ewrt_vision)
 
-                # We'll take anything within about 15 degrees for top-down or horizontal grasps.
-                constraint.vector_alignment_with_tolerance.threshold_radians = 0.25
+            # We'll take anything within about 15 degrees for top-down or horizontal grasps.
+            constraint.vector_alignment_with_tolerance.threshold_radians = 0.25
 
-                # Specify the frame we're using.
-                grasp.grasp_params.grasp_params_frame_name = frame_helpers.VISION_FRAME_NAME
+            # Specify the frame we're using.
+            grasp.grasp_params.grasp_params_frame_name = frame_helpers.VISION_FRAME_NAME
 
-                # Build the proto
-                grasp_request = manipulation_api_pb2.ManipulationApiRequest(
-                    pick_object_in_image=grasp)
+            # Build the proto
+            grasp_request = manipulation_api_pb2.ManipulationApiRequest(
+                pick_object_in_image=grasp)
 
-                # Send the request
-                print('Sending grasp request...')
-                cmd_response = manipulation_api_client.manipulation_api_command(
-                    manipulation_api_request=grasp_request)
+            # Send the request
+            print('Sending grasp request...')
+            cmd_response = manipulation_api_client.manipulation_api_command(
+                manipulation_api_request=grasp_request)
 
-                # Wait for the grasp to finish
-                grasp_done = False
-                failed = False
-                time_start = time.time()
-                while not grasp_done:
-                    feedback_request = manipulation_api_pb2.ManipulationApiFeedbackRequest(
-                        manipulation_cmd_id=cmd_response.manipulation_cmd_id)
+            # Wait for the grasp to finish
+            grasp_done = False
+            failed = False
+            time_start = time.time()
+            while not grasp_done:
+                feedback_request = manipulation_api_pb2.ManipulationApiFeedbackRequest(
+                    manipulation_cmd_id=cmd_response.manipulation_cmd_id)
 
-                    # Send a request for feedback
-                    response = manipulation_api_client.manipulation_api_feedback_command(
-                        manipulation_api_feedback_request=feedback_request)
+                # Send a request for feedback
+                response = manipulation_api_client.manipulation_api_feedback_command(
+                    manipulation_api_feedback_request=feedback_request)
 
-                    current_state = response.current_state
-                    current_time = time.time() - time_start
-                    print(
-                        'Current state ({time:.1f} sec): {state}'.format(
-                            time=current_time,
-                            state=manipulation_api_pb2.ManipulationFeedbackState.Name(
-                                current_state)), end='                \r')
-                    sys.stdout.flush()
+                current_state = response.current_state
+                current_time = time.time() - time_start
+                print(
+                    'Current state ({time:.1f} sec): {state}'.format(
+                        time=current_time,
+                        state=manipulation_api_pb2.ManipulationFeedbackState.Name(
+                            current_state)), end='                \r')
+                sys.stdout.flush()
 
-                    failed_states = [
-                        manipulation_api_pb2.MANIP_STATE_GRASP_FAILED,
-                        manipulation_api_pb2.MANIP_STATE_GRASP_PLANNING_NO_SOLUTION,
-                        manipulation_api_pb2.MANIP_STATE_GRASP_FAILED_TO_RAYCAST_INTO_MAP,
-                        manipulation_api_pb2.MANIP_STATE_GRASP_PLANNING_WAITING_DATA_AT_EDGE
-                    ]
+                failed_states = [
+                    manipulation_api_pb2.MANIP_STATE_GRASP_FAILED,
+                    manipulation_api_pb2.MANIP_STATE_GRASP_PLANNING_NO_SOLUTION,
+                    manipulation_api_pb2.MANIP_STATE_GRASP_FAILED_TO_RAYCAST_INTO_MAP,
+                    manipulation_api_pb2.MANIP_STATE_GRASP_PLANNING_WAITING_DATA_AT_EDGE
+                ]
 
-                    failed = current_state in failed_states
-                    grasp_done = current_state == manipulation_api_pb2.MANIP_STATE_GRASP_SUCCEEDED or failed
+                failed = current_state in failed_states
+                grasp_done = current_state == manipulation_api_pb2.MANIP_STATE_GRASP_SUCCEEDED or failed
 
-                    time.sleep(0.1)
+                time.sleep(0.1)
 
-                holding_toy = not failed
+            holding_piece = not failed
 
-            time.sleep(5)
-            # Move the arm to a carry position.
-            grasp_holding_override = manipulation_api_pb2.ApiGraspOverride(
-                override_request=manipulation_api_pb2.ApiGraspOverride.OVERRIDE_HOLDING)
-            
-            carriable_and_stowable_override = manipulation_api_pb2.ApiGraspedCarryStateOverride(
-                override_request=robot_state_pb2.ManipulatorState.CARRY_STATE_CARRIABLE_AND_STOWABLE)
-            
-            override_request = manipulation_api_pb2.ApiGraspOverrideRequest(
-                api_grasp_override=grasp_holding_override,
-                carry_state_override=carriable_and_stowable_override)
-            manipulation_api_client.grasp_override_command(override_request)
+        time.sleep(2)
+        # Move the arm to a carry position.
+        grasp_holding_override = manipulation_api_pb2.ApiGraspOverride(
+            override_request=manipulation_api_pb2.ApiGraspOverride.OVERRIDE_HOLDING)
+        
+        carriable_and_stowable_override = manipulation_api_pb2.ApiGraspedCarryStateOverride(
+            override_request=robot_state_pb2.ManipulatorState.CARRY_STATE_CARRIABLE_AND_STOWABLE)
+        
+        override_request = manipulation_api_pb2.ApiGraspOverrideRequest(
+            api_grasp_override=grasp_holding_override,
+            carry_state_override=carriable_and_stowable_override)
+        manipulation_api_client.grasp_override_command(override_request)
 
-            # Wait for the override to take effect before trying to move the arm.
-            wait_until_grasp_state_updates(override_request, robot_state_client)
+        # Wait for the override to take effect before trying to move the arm.
+        wait_until_grasp_state_updates(override_request, robot_state_client)
 
-            print('')
-            print('Grasp finished, Carrying...')
-            carry_cmd = RobotCommandBuilder.arm_carry_command()
-            
-            block_until_arm_arrives(command_client, command_client.robot_command(carry_cmd), 2.0)
+        print('')
+        print('Grasp finished, Carrying...')
+        carry_cmd = RobotCommandBuilder.arm_carry_command()
+        
+        block_until_arm_arrives(command_client, command_client.robot_command(carry_cmd), 2.0)
 
-            print('Carrying Finished, Stowing...')
-            stow = RobotCommandBuilder.arm_stow_command()
+        print('Carrying Finished, Stowing...')
+        stow = RobotCommandBuilder.arm_stow_command()
 
-            block_until_arm_arrives(command_client, command_client.robot_command(stow), 3.0)
-                        
-            # Wait for the stow command to finish
-            time.sleep(0.75)
-
-            # For now, we'll just exit...
-            print('')
-            print('Done for now, returning control to tablet in 5 seconds...')
-            time.sleep(5.0)
-
-            # PLACING FUNCTION WILL BE HERE ALONG WITH MINIMAX
-            break
+        block_until_arm_arrives(command_client, command_client.robot_command(stow), 3.0)
+                    
+        # Wait for the stow command to finish
+        time.sleep(0.75)
+        break
 
 def compute_stand_location_and_yaw(vision_tform_target, robot_state_client, distance_margin):
     # Compute drop-off location:
@@ -483,7 +445,3 @@ def wait_until_grasp_state_updates(grasp_override_command, robot_state_client):
         updated = (not has_grasp_override or
                    grasp_state_updated) and (not has_carry_state_override or carry_state_updated)
         time.sleep(0.1)
-
-if __name__ == '__main__':
-    if not main(sys.argv[1:]):
-        sys.exit(1)
