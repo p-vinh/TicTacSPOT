@@ -11,8 +11,8 @@ def main():
     test.changeInitialState(initial_values)
     test.printBoard()
 
-    changed_values1 = [567,568,569,570,571,574] # placed X piece on 569
-    changed_values = [569,570,571,572,574] # placed X piece on 569
+    changed_values1 = [567,568,569,570,571,574]
+    changed_values = [569,570,571,572,574] 
 
     print()
     print("Player made their move....")

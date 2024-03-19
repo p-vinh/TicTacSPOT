@@ -112,7 +112,7 @@ def minimax(board):
             if bestScore < score:
                 bestScore = score
                 optimal_action = action
-        return optimal_action
+        return optimal_action, board[optimal_action[0]][optimal_action[1]]
     else:
         bestScore = math.inf
         
@@ -122,7 +122,7 @@ def minimax(board):
             if bestScore > score:
                 bestScore = score
                 optimal_action = action
-        return optimal_action
+        return optimal_action, board[optimal_action[0]][optimal_action[1]]
     
 def maxScore(board, alpha, beta):
     if terminal(board):

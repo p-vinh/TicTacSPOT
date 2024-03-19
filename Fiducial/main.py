@@ -17,7 +17,7 @@ from sys import platform
 from PIL import Image
 import bosdyn.client
 import bosdyn.client.util
-from bosdyn import geometry
+import bosdyn.geometry
 from bosdyn.api import geometry_pb2, image_pb2, trajectory_pb2, world_object_pb2
 from bosdyn.api.geometry_pb2 import SE2Velocity, SE2VelocityLimit, Vec2
 from bosdyn.api.spot import robot_command_pb2 as spot_command_pb2
@@ -37,31 +37,14 @@ from bosdyn.client.manipulation_api_client import ManipulationApiClient
 
 #pylint: disable=no-member
 LOGGER = logging.getLogger()
-
+BOARD_REF = 543
+LIST_IDS = [526, 527, 528,
+            529, 530, 531,
+            532, 533, 534]
 # Use this length to make sure we're commanding the head of the robot
 # to a position instead of the center.
 BODY_LENGTH = 1.1
 
-class Exit(object):
-    """Handle exiting on SIGTERM."""
-
-    def __init__(self):
-        self._kill_now = False
-        signal.signal(signal.SIGTERM, self._sigterm_handler)
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, _type, _value, _traceback):
-        return False
-
-    def _sigterm_handler(self, _signum, _frame):
-        self._kill_now = True
-
-    @property
-    def kill_now(self):
-        """Return if sigterm received and program should end."""
-        return self._kill_now
 
 def get_input():
     """
@@ -78,34 +61,55 @@ def get_input():
 #------------------------------------------Detect Fiducial main function----------------------------------------------------------- 
 #Call this function to start and detect board fiducials
 # - Returns a set of fiducials when it finds the expected number of fiducials
-def detectFiducial(self, expectedNumberOfFiducials):
+
+def detectFiducial(expectedNumberOfFiducials, pitch):
+        
+    # Clamp Pitch
+    max_pitch = 0.45
+    pitch = min(pitch, max_pitch)
+    change_pitch(pitch)
+
+    time.sleep(0.5)
+    
     found = 0
+    maxNumberOfIterations = 30
     fiducial = set()
-    detected_fiducial = False
-    while found != expectedNumberOfFiducials:
-            if self._use_world_object_service:
-                # Get the all fiducial objects
-                fiducial = self.find_fiducials()
-                if fiducial is not None:
-                    found = len(fiducial)
-                    detected_fiducial = True
-            if detected_fiducial:
-                print(fiducial)
-            else:
-                print('Trying to find fiducials...')
-    return fiducial
-     
+    detect = False
+    while found != expectedNumberOfFiducials and maxNumberOfIterations > 0:
+        if _use_world_object_service:
+            # Get the all fiducial objects
+            fiducial = find_fiducials()
+            if fiducial is not None:
+                found = len(fiducial)
+                detect = True
+        if detect:
+            print(fiducial, found, maxNumberOfIterations)
+        maxNumberOfIterations-= 1
+    
+    if found == expectedNumberOfFiducials:
+        return fiducial
+    elif maxNumberOfIterations <= 0:
+        pitch -= 0.1
+        return detectFiducial(expectedNumberOfFiducials, pitch)
+
+        
+def change_pitch(pitch):
+    footprint_R_body = bosdyn.geometry.EulerZXY(yaw=0.0, roll=0.0, pitch=pitch)
+    cmd = RobotCommandBuilder.synchro_stand_command(footprint_R_body=footprint_R_body)
+    command_client.robot_command(cmd)
+    robot.logger.info('Robot Pitch')
+    
 #Find Fiducials and return a set of id numbers
-def find_fiducials(self):
+def find_fiducials():
      #Get all fiducials that Spot detects with its perception system.
         # Get all fiducial objects (an object of a specific type).
         request_fiducials = [world_object_pb2.WORLD_OBJECT_APRILTAG]
-        fiducial_objects = self._world_object_client.list_world_objects(object_type=request_fiducials).world_objects
+        fiducial_objects = _world_object_client.list_world_objects(object_type=request_fiducials).world_objects
         if len(fiducial_objects) > 0:
             ids = set()
             # Find fiducials id
             for fiducial in fiducial_objects:
-                if(fiducial.apriltag_properties.tag_id != 543): #Ignore fiducial id that represents the board
+                if(fiducial.apriltag_properties.tag_id != BOARD_REF): #Ignore fiducial id that represents the board
                     ids.add(fiducial.apriltag_properties.tag_id)
             #IMPORTANT, it sorts the list of IDS in order
             sorted_list = list(ids)
@@ -164,13 +168,20 @@ def main():
     options = parser.parse_args()
 
 # ===============================Start SPOT/Power On===========================================
+    global _use_world_object_service
+    global _world_object_client
+    global lease_client
+    global command_client
+    global robot
     sdk = bosdyn.client.create_standard_sdk('TicTacSPOT')
     sdk.register_service_client(NetworkComputeBridgeClient)
     robot = sdk.create_robot(options.hostname)
+
+    _use_world_object_service = options.use_world_objects
     
     fiducial_follower = None
     image_viewer = None
-    bosdyn.client.util.authenticate_with_client_certificate(robot, username, password)
+    bosdyn.client.util.authenticate(robot)
     robot.time_sync.wait_for_sync()
 
     network_compute_client = robot.ensure_client(NetworkComputeBridgeClient.default_service_name)
@@ -178,7 +189,7 @@ def main():
     command_client = robot.ensure_client(RobotCommandClient.default_service_name)
     lease_client = robot.ensure_client(LeaseClient.default_service_name)
     manipulation_api_client = robot.ensure_client(ManipulationApiClient.default_service_name)
-
+    _world_object_client = robot.ensure_client(WorldObjectClient.default_service_name)
     
     with bosdyn.client.lease.LeaseKeepAlive(lease_client, must_acquire=True, return_at_exit=True):
         
@@ -201,7 +212,7 @@ def main():
         #           0 1 2
         #           3 4 5
         #           6 7 8
-        initial_values = [0,1,2,3,4,5,6,7,8]
+        initial_values = LIST_IDS
         expectedNumberOfFiducials = 8
         player = ttt.O
 
@@ -214,7 +225,9 @@ def main():
         # while loop insert here <----------Game Loop starts
 
         #1. Find Fidicials and Update Board ----> Player move
-        setOfIds = detectFiducial(expectedNumberOfFiducials)
+        #Have Spot twist up to see all fiducials        
+        setOfIds = detectFiducial(expectedNumberOfFiducials, -0.2)
+        print(setOfIds)
         board.updateBoard(setOfIds, player)
         
         print("Detection done, found players move....")
@@ -222,14 +235,22 @@ def main():
         board.printBoard()
         board.addOPiece()
         board.updateTotalPieces()
-        print("Player pieces:" + board.getOPieces)
-        print("SPOT's Pieces: " + board.getXPieces)
-        print("Total Pieces on board: " + board.getTotalPieces)
+        print("Player pieces:", board.getOPieces())
+        print("SPOT's Pieces: ", board.getXPieces())
+        print("Total Pieces on board: ", board.getTotalPieces())
         print("------------------------------------------")
 
+        #Have SPOT go back to stand position
+        goBackToSame =  bosdyn.geometry.EulerZXY(yaw=0.0, roll=0.0, pitch=0.0)
+        cmd2 = RobotCommandBuilder.synchro_stand_command(footprint_R_body=goBackToSame)
+        command_client.robot_command(cmd2)
+        robot.logger.info('Robot is back to stand position')
+        time.sleep(3)
+        
         #2. Minimax
-        move = ttt.minimax(board.getBoardState())
-        print(move)
+        move, id = ttt.minimax(board.getBoardState())
+        print(move, id)
+        
 
 
 
