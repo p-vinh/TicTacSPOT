@@ -37,7 +37,7 @@ from bosdyn.client.world_object import WorldObjectClient
 
 #pylint: disable=no-member
 LOGGER = logging.getLogger()
-
+REF_POINT = 527
 # Use this length to make sure we're commanding the head of the robot
 # to a position instead of the center.
 BODY_LENGTH = 1.1
@@ -199,82 +199,12 @@ class FollowFiducial(object):
         if len(fiducial_objects) > 0:
             # Return all fiducial objects it sees
             for fiducial in fiducial_objects:
-                if fiducial.apriltag_properties.tag_id == 526:
+                if fiducial.apriltag_properties.tag_id == REF_POINT:
                     return fiducial
         
         # Return none if no fiducials are found.
         return None
-    '''
-    def start(self):
-        """Claim lease of robot and start the fiducial follower."""
-        self._robot.time_sync.wait_for_sync()
-
-        # Stand the robot up.
-        if self._standup:
-            self.power_on()
-            blocking_stand(self._robot_command_client)
-
-            # Delay grabbing image until spot is standing (or close enough to upright).
-            time.sleep(.35)
-
-        while self._attempts <= self._max_attempts:
-            detected_fiducial = False
-            fiducial_rt_world = None
-            if self._use_world_object_service:
-                # Get the first fiducial object Spot detects with the world object service.
-                fiducial = self.get_fiducial_objects()
-                if fiducial is not None:
-                    vision_tform_fiducial = get_a_tform_b(
-                        fiducial.transforms_snapshot, VISION_FRAME_NAME,
-                        fiducial.apriltag_properties.frame_name_fiducial).to_proto()
-                    if vision_tform_fiducial is not None:
-                        detected_fiducial = True
-                        fiducial_rt_world = vision_tform_fiducial.position
-            else:
-                # Detect the april tag in the images from Spot using the apriltag library.
-                bboxes, source_name = self.image_to_bounding_box()
-                if bboxes:
-                    self._previous_source = source_name
-                    (tvec, _, source_name) = self.pixel_coords_to_camera_coords(
-                        bboxes, self._intrinsics, source_name)
-                    vision_tform_fiducial_position = self.compute_fiducial_in_world_frame(tvec)
-                    fiducial_rt_world = geometry_pb2.Vec3(x=vision_tform_fiducial_position[0],
-                                                          y=vision_tform_fiducial_position[1],
-                                                          z=vision_tform_fiducial_position[2])
-                    detected_fiducial = True
-
-            if detected_fiducial:
-                # Go to the tag and stop within a certain distance
-                self.go_to_tag(fiducial_rt_world)
-            else:
-                print('No fiducials found')
-
-            self._attempts += 1  #increment attempts at finding a fiducial
-
-        # Power off at the conclusion of the example.
-        if self._powered_on:
-            self.power_off()
-
-    def get_fiducial_objects(self):
-        """Get all fiducials that Spot detects with its perception system."""
-        # Get all fiducial objects (an object of a specific type).
-        request_fiducials = [world_object_pb2.WORLD_OBJECT_APRILTAG]
-        fiducial_objects = self._world_object_client.list_world_objects(
-            object_type=request_fiducials).world_objects
-        if len(fiducial_objects) > 0:
-            # Return the first detected fiducial.
-            # return fiducial_objects[0]
-            # mandy
-            ids = set()
-            for fiducial in fiducial_objects:
-                ids.add(fiducial.apriltag_properties.tag_id)
-                print(ids)
-            return ids
-            # mandy
-        # Return none if no fiducials are found.
-        return None
-        '''
-
+    
     def power_on(self):
         """Power on the robot."""
         self._robot.power_on()
@@ -602,36 +532,8 @@ class Exit(object):
         return self._kill_now
 
 
-def main():
+def follow(robot, options, board_ref):
     """Command-line interface."""
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    bosdyn.client.util.add_base_arguments(parser)
-    parser.add_argument('--distance-margin', default=.5,
-                        help='Distance [meters] that the robot should stop from the fiducial.')
-    parser.add_argument('--limit-speed', default=True, type=lambda x: (str(x).lower() == 'true'),
-                        help='If the robot should limit its maximum speed.')
-    parser.add_argument('--avoid-obstacles', default=False, type=lambda x:
-                        (str(x).lower() == 'true'),
-                        help='If the robot should have obstacle avoidance enabled.')
-    parser.add_argument(
-        '--use-world-objects', default=True, type=lambda x: (str(x).lower() == 'true'),
-        help='If fiducials should be from the world object service or the apriltag library.')
-    options = parser.parse_args()
-
-    # If requested, attempt import of Apriltag library
-    if not options.use_world_objects:
-        try:
-            global apriltag
-            from apriltag import apriltag
-        except ImportError as e:
-            print(f'Could not import the AprilTag library. Aborting. Exception: {e}')
-            return False
-
-    # Create robot object.
-    sdk = create_standard_sdk('FollowFiducialClient')
-    robot = sdk.create_robot(options.hostname)
 
     fiducial_follower = None
     image_viewer = None
@@ -652,10 +554,7 @@ def main():
                 # This is disabled for MacOS-X operating systems.
                 image_viewer = DisplayImagesAsync(fiducial_follower)
                 image_viewer.start()
-            lease_client = robot.ensure_client(LeaseClient.default_service_name)
-            with bosdyn.client.lease.LeaseKeepAlive(lease_client, must_acquire=True,
-                                                    return_at_exit=True):
-                fiducial_follower.start()
+            fiducial_follower.start()
     except RpcError as err:
         LOGGER.error('Failed to communicate with robot: %s', err)
     finally:

@@ -36,6 +36,8 @@ from bosdyn.client.network_compute_bridge_client import NetworkComputeBridgeClie
 from bosdyn.client.manipulation_api_client import ManipulationApiClient
 
 import fetch_only_pickup as fetch
+import fiducial_follow as follow
+import arm_joint_move as joint_move
 
 #pylint: disable=no-member
 LOGGER = logging.getLogger()
@@ -145,8 +147,6 @@ def convertTo2DArray(markerIds):
 #==================================Main Function===================================================
 def main():
     load_dotenv()
-    username = os.getenv("USERNAME")
-    password = os.getenv("PASSWORD")
 #==================================Parse args===================================================
     parser = argparse.ArgumentParser()
     bosdyn.client.util.add_base_arguments(parser)
@@ -167,6 +167,7 @@ def main():
     parser.add_argument(
         '--use-world-objects', default=True, type=lambda x: (str(x).lower() == 'true'),
         help='If fiducials should be from the world object service or the apriltag library.')
+    
     options = parser.parse_args()
 
 # ===============================Start SPOT/Power On===========================================
@@ -261,8 +262,9 @@ def main():
         time.sleep(1) # Wait for pickup to finish
         
         # 4. Set up Position (Denise and Mandy)
-        
+        follow.follow(robot, options, BOARD_REF)
         # 5. Backup From Reference Point
+        
         
         
         # 6. Gameover?
