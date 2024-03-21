@@ -339,7 +339,7 @@ def pick_up(model, ml_service, confidence, robot, network_compute_client, robot_
                 failed = current_state in failed_states
                 grasp_done = current_state == manipulation_api_pb2.MANIP_STATE_GRASP_SUCCEEDED or failed
 
-                time.sleep(0.1)
+                time.sleep(0.5)
 
             holding_piece = not failed
 

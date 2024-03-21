@@ -37,14 +37,13 @@ from bosdyn.client.manipulation_api_client import ManipulationApiClient
 
 import fetch_only_pickup as fetch
 import fiducial_follow as follow
-import arm_joint_move as joint_move
 
 #pylint: disable=no-member
 LOGGER = logging.getLogger()
-BOARD_REF = 543
-LIST_IDS = [526, 527, 528,
-            529, 530, 531,
-            532, 533, 534]
+BOARD_REF = 527
+LIST_IDS = [528, 529, 530,
+            531, 532, 533,
+            534, 535, 526]
 # Use this length to make sure we're commanding the head of the robot
 # to a position instead of the center.
 BODY_LENGTH = 1.1
@@ -140,8 +139,7 @@ def convertTo2DArray(markerIds):
     for i in range(len(markerIds)):
         ret.append(markerIds[i][0])
     return ret
-
-
+    
 # example python main.py -s tictactoe -m my_efficient_model -c 0.85 -d 0.5 --avoid-obstacles True
 
 #==================================Main Function===================================================
@@ -261,13 +259,14 @@ def main():
                       lease_client, manipulation_api_client)
         time.sleep(1) # Wait for pickup to finish
         
-        # 4. Set up Position (Denise and Mandy)
-        follow.follow(robot, options, BOARD_REF)
-        # 5. Backup From Reference Point
+        # 4. Set up Position / 5. Place Piece / 6. Backup From Reference Point
+        print("Placing Piece....")
+        placing = follow.place_piece(robot, options, BOARD_REF)
         
+        if not placing:
+            LOGGER.error('Failed to place piece')
         
-        
-        # 6. Gameover?
+        # 7. Gameover?
         piece = ttt.winner(board.getBoardState())
         if piece == ttt.X:
             print("Spot wins")

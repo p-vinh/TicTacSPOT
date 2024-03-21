@@ -29,6 +29,7 @@ import queue
 import threading
 from google.protobuf import wrappers_pb2
 from object_detection.utils import label_map_util
+from dotenv import load_dotenv
 
 kServiceAuthority = "fetch-tutorial-worker.spot.robot"
 
@@ -254,6 +255,7 @@ def register_with_robot(options):
 
 
 def main(argv):
+    load_dotenv()
     default_port = '50051'
 
     parser = argparse.ArgumentParser()

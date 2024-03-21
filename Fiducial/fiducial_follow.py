@@ -15,7 +15,6 @@ from sys import platform
 
 import cv2
 import numpy as np
-from PIL import Image
 
 import bosdyn.client
 import bosdyn.client.util
@@ -35,9 +34,12 @@ from bosdyn.client.robot_id import RobotIdClient, version_tuple
 from bosdyn.client.robot_state import RobotStateClient
 from bosdyn.client.world_object import WorldObjectClient
 
+import arm_joint_move as joint_move
+
 #pylint: disable=no-member
 LOGGER = logging.getLogger()
-REF_POINT = 527
+ref_point = None
+board_properties = None
 # Use this length to make sure we're commanding the head of the robot
 # to a position instead of the center.
 BODY_LENGTH = 1.1
@@ -60,8 +62,8 @@ class FollowFiducial(object):
         self._tag_offset = float(options.distance_margin) + BODY_LENGTH / 2.0  # meters
 
         # Maximum speeds.
-        self._max_x_vel = 0.5
-        self._max_y_vel = 0.5
+        self._max_x_vel = 0.3
+        self._max_y_vel = 0.3
         self._max_ang_vel = 1.0
 
         # Indicator if fiducial detection's should be from the world object service using
@@ -80,9 +82,6 @@ class FollowFiducial(object):
         self._x_eps = .05
         self._y_eps = .05
         self._angle_eps = .075
-
-        # Indicator for if motor power is on.
-        self._powered_on = False
 
         # Counter for the number of iterations completed.
         self._attempts = 0
@@ -115,7 +114,6 @@ class FollowFiducial(object):
             src.name for src in self._image_client.list_image_sources() if
             (src.image_type == image_pb2.ImageSource.IMAGE_TYPE_VISUAL and 'depth' not in src.name)
         ]
-        print(self._source_names)
 
         # Dictionary mapping camera source to previously computed extrinsics.
         self._camera_to_extrinsics_guess = self.populate_source_dict()
@@ -153,21 +151,14 @@ class FollowFiducial(object):
         return version_tuple(robot_id.software_release.version) >= (1, 2, 0)
 
     def start(self):
-    #Claim lease of robot and start the fiducial follower.
+        #Claim lease of robot and start the fiducial follower.
         self._robot.time_sync.wait_for_sync()
-
-        # Stand the robot up.
-        if self._standup:
-            self.power_on()
-            blocking_stand(self._robot_command_client)
-
-            # Delay grabbing image until spot is standing (or close enough to upright).
-            time.sleep(.35)
 
         while self._attempts <= self._max_attempts:
             detected_fiducial = False
             fiducial_rt_world = None
             if self._use_world_object_service:
+                
                 # Get the all fiducial objects
                 fiducial = self.get_fiducial_objects()
                 if fiducial is not None:
@@ -177,170 +168,35 @@ class FollowFiducial(object):
                     if vision_tform_fiducial is not None:
                         detected_fiducial = True
                         fiducial_rt_world = vision_tform_fiducial.position
-                    detected_fiducial = True
-
+            
             if detected_fiducial:
                 self.go_to_tag(fiducial_rt_world)
+                break
             else:
                 print('No fiducials found')
-
             self._attempts += 1  #increment attempts at finding a fiducial
-
-        # Power off at the conclusion of the example.
-        if self._powered_on:
-            self.power_off()
+        if self._attempts >= self._max_attempts:
+            return False
+        return True # Fiducial is found
 
     def get_fiducial_objects(self):
         """Get all fiducials that Spot detects with its perception system."""
         # Get all fiducial objects (an object of a specific type).
+        global board_properties
+        
         request_fiducials = [world_object_pb2.WORLD_OBJECT_APRILTAG]
         fiducial_objects = self._world_object_client.list_world_objects(
             object_type=request_fiducials).world_objects
         if len(fiducial_objects) > 0:
             # Return all fiducial objects it sees
             for fiducial in fiducial_objects:
-                if fiducial.apriltag_properties.tag_id == REF_POINT:
+                if fiducial.apriltag_properties.tag_id == ref_point:
+                    board_properties = fiducial # Set the rt world object
                     return fiducial
         
         # Return none if no fiducials are found.
         return None
     
-    def power_on(self):
-        """Power on the robot."""
-        self._robot.power_on()
-        self._powered_on = True
-        print(f'Powered On {self._robot.is_powered_on()}')
-
-    def power_off(self):
-        """Power off the robot."""
-        self._robot.power_off()
-        print(f'Powered Off {not self._robot.is_powered_on()}')
-
-    def image_to_bounding_box(self):
-        """Determine which camera source has a fiducial.
-        Return the bounding box of the first detected fiducial."""
-        #Iterate through all five camera sources to check for a fiducial
-        for i in range(len(self._source_names) + 1):
-            # Get the image from the source camera.
-            if i == 0:
-                if self._previous_source is not None:
-                    # Prioritize the camera the fiducial was last detected in.
-                    source_name = self._previous_source
-                else:
-                    continue
-            elif self._source_names[i - 1] == self._previous_source:
-                continue
-            else:
-                source_name = self._source_names[i - 1]
-
-            img_req = build_image_request(source_name, quality_percent=100,
-                                        image_format=image_pb2.Image.FORMAT_RAW)
-            image_response = self._image_client.get_image([img_req])
-            self._camera_tform_body = get_a_tform_b(image_response[0].shot.transforms_snapshot,
-                                                    image_response[0].shot.frame_name_image_sensor,
-                                                    BODY_FRAME_NAME)
-            self._body_tform_world = get_a_tform_b(image_response[0].shot.transforms_snapshot,
-                                                BODY_FRAME_NAME, VISION_FRAME_NAME)
-
-            # Camera intrinsics for the given source camera.
-            self._intrinsics = image_response[0].source.pinhole.intrinsics
-            width = image_response[0].shot.image.cols
-            height = image_response[0].shot.image.rows
-
-            # detect given fiducial in image and return the bounding box of it
-            bboxes = self.detect_fiducial_in_image(image_response[0].shot.image, (width, height),
-                                                source_name)
-            if bboxes:
-                print(f'Found bounding box for {source_name}')
-                return bboxes, source_name
-            else:
-                self._tag_not_located = True
-                print(f'Failed to find bounding box for {source_name}')
-        return [], None
-
-    def detect_fiducial_in_image(self, image, dim, source_name):
-        """Detect the fiducial within a single image and return its bounding box."""
-        image_grey = np.array(
-            Image.frombytes('P', (int(dim[0]), int(dim[1])), data=image.data, decoder_name='raw'))
-
-        #Rotate each image such that it is upright
-        image_grey = self.rotate_image(image_grey, source_name)
-
-        #Make the image greyscale to use bounding box detections
-        detector = apriltag(family='tag36h11')
-        detections = detector.detect(image_grey)
-
-        bboxes = []
-        for i in range(len(detections)):
-            # Draw the bounding box detection in the image.
-            bbox = detections[i]['lb-rb-rt-lt']
-            cv2.polylines(image_grey, [np.int32(bbox)], True, (0, 0, 0), 2)
-            bboxes.append(bbox)
-
-        self._image[source_name] = image_grey
-        return bboxes
-
-    def bbox_to_image_object_pts(self, bbox):
-        """Determine the object points and image points for the bounding box.
-        The origin in object coordinates = top left corner of the fiducial.
-        Order both points sets following: (TL,TR, BL, BR)"""
-        fiducial_height_and_width = 146  #mm
-        obj_pts = np.array([[0, 0], [fiducial_height_and_width, 0], [0, fiducial_height_and_width],
-                            [fiducial_height_and_width, fiducial_height_and_width]],
-                        dtype=np.float32)
-        #insert a 0 as the third coordinate (xyz)
-        obj_points = np.insert(obj_pts, 2, 0, axis=1)
-
-        #['lb-rb-rt-lt']
-        img_pts = np.array([[bbox[3][0], bbox[3][1]], [bbox[2][0], bbox[2][1]],
-                            [bbox[0][0], bbox[0][1]], [bbox[1][0], bbox[1][1]]], dtype=np.float32)
-        return obj_points, img_pts
-
-    def pixel_coords_to_camera_coords(self, bbox, intrinsics, source_name):
-        """Compute transformation of 2d pixel coordinates to 3d camera coordinates."""
-        camera = self.make_camera_matrix(intrinsics)
-        # Track a triplet of (translation vector, rotation vector, camera source name)
-        best_bbox = (None, None, source_name)
-        # The best bounding box is considered the closest to the robot body.
-        closest_dist = float('inf')
-        for i in range(len(bbox)):
-            obj_points, img_points = self.bbox_to_image_object_pts(bbox[i])
-            if self._camera_to_extrinsics_guess[source_name][0]:
-                # initialize the position estimate with the previous extrinsics solution
-                # then iteratively solve for new position
-                old_rvec, old_tvec = self._camera_to_extrinsics_guess[source_name][1]
-                _, rvec, tvec = cv2.solvePnP(obj_points, img_points, camera, np.zeros((5, 1)),
-                                            old_rvec, old_tvec, True, cv2.SOLVEPNP_ITERATIVE)
-            else:
-                # Determine current extrinsic solution for the tag.
-                _, rvec, tvec = cv2.solvePnP(obj_points, img_points, camera, np.zeros((5, 1)))
-
-            # Save extrinsics results to help speed up next attempts to locate bounding box in
-            # the same camera source.
-            self._camera_to_extrinsics_guess[source_name] = (True, (rvec, tvec))
-
-            dist = math.sqrt(float(tvec[0][0])**2 + float(tvec[1][0])**2 +
-                            float(tvec[2][0])**2) / 1000.0
-            if dist < closest_dist:
-                closest_dist = dist
-                best_bbox = (tvec, rvec, source_name)
-
-        # Flag indicating if the best april tag been found/located
-        self._tag_not_located = best_bbox[0] is None and best_bbox[1] is None
-        return best_bbox
-
-    def compute_fiducial_in_world_frame(self, tvec):
-        """Transform the tag position from camera coordinates to world coordinates."""
-        fiducial_rt_camera_frame = np.array(
-            [float(tvec[0][0]) / 1000.0,
-            float(tvec[1][0]) / 1000.0,
-            float(tvec[2][0]) / 1000.0])
-        body_tform_fiducial = (self._camera_tform_body.inverse()).transform_point(
-            fiducial_rt_camera_frame[0], fiducial_rt_camera_frame[1], fiducial_rt_camera_frame[2])
-        fiducial_rt_world = self._body_tform_world.inverse().transform_point(
-            body_tform_fiducial[0], body_tform_fiducial[1], body_tform_fiducial[2])
-        return fiducial_rt_world
-
     def go_to_tag(self, fiducial_rt_world):
         """Use the position of the april tag in vision world frame and command the robot."""
         # Compute the go-to point (offset by .5m from the fiducial position) and the heading at
@@ -355,7 +211,7 @@ class FollowFiducial(object):
             goal_heading=self._angle_desired, frame_name=VISION_FRAME_NAME, params=mobility_params,
             body_height=0.0, locomotion_hint=spot_command_pb2.HINT_AUTO)
         end_time = 5.0
-        if self._movement_on and self._powered_on:
+        if self._movement_on:
             #Issue the command to the robot
             self._robot_command_client.robot_command(lease=None, command=tag_cmd,
                                                     end_time_secs=time.time() + end_time)
@@ -458,112 +314,48 @@ class FollowFiducial(object):
         return camera_matrix
 
 
-class DisplayImagesAsync(object):
-    """Display the images Spot sees from all five cameras."""
 
-    def __init__(self, fiducial_follower):
-        self._fiducial_follower = fiducial_follower
-        self._thread = None
-        self._started = False
-        self._sources = []
-
-    def get_image(self):
-        """Retrieve current images (with bounding boxes) from the fiducial detector."""
-        images = self._fiducial_follower.image
-        image_by_source = []
-        for s_name in self._sources:
-            if s_name in images:
-                image_by_source.append(images[s_name])
-            else:
-                image_by_source.append(np.array([]))
-        return image_by_source
-
-    def start(self):
-        """Initialize the thread to display the images."""
-        if self._started:
-            return None
-        self._sources = self._fiducial_follower.image_sources_list
-        self._started = True
-        self._thread = threading.Thread(target=self.update)
-        self._thread.start()
-        return self
-
-    def update(self):
-        """Update the images being displayed to match that seen by the robot."""
-        while self._started:
-            images = self.get_image()
-            for i, image in enumerate(images):
-                if image.size != 0:
-                    original_height, original_width = image.shape[:2]
-                    resized_image = cv2.resize(
-                        image, (int(original_width * .5), int(original_height * .5)),
-                        interpolation=cv2.INTER_NEAREST)
-                    cv2.imshow(self._sources[i], resized_image)
-                    cv2.moveWindow(self._sources[i],
-                                max(int(i * original_width * .5), int(i * original_height * .5)),
-                                0)
-                    cv2.waitKey(1)
-
-    def stop(self):
-        """Stop the thread and the image displays."""
-        self._started = False
-        cv2.destroyAllWindows()
-
-
-class Exit(object):
-    """Handle exiting on SIGTERM."""
-
-    def __init__(self):
-        self._kill_now = False
-        signal.signal(signal.SIGTERM, self._sigterm_handler)
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, _type, _value, _traceback):
-        return False
-
-    def _sigterm_handler(self, _signum, _frame):
-        self._kill_now = True
-
-    @property
-    def kill_now(self):
-        """Return if sigterm received and program should end."""
-        return self._kill_now
-
-
-def follow(robot, options, board_ref):
-    """Command-line interface."""
-
+def place_piece(robot, options, board_ref):
+    global ref_point
+    global board_properties
+    
+    ref_point = board_ref
     fiducial_follower = None
-    image_viewer = None
+        
     try:
-        with Exit():
-            bosdyn.client.util.authenticate(robot)
-            robot.start_time_sync()
+        # Verify the robot is not estopped.
+        assert not robot.is_estopped(), 'Robot is estopped. ' \
+                                        'Please use an external E-Stop client, ' \
+                                        'such as the estop SDK example, to configure E-Stop.'
 
-            # Verify the robot is not estopped.
-            assert not robot.is_estopped(), 'Robot is estopped. ' \
-                                            'Please use an external E-Stop client, ' \
-                                            'such as the estop SDK example, to configure E-Stop.'
-
-            fiducial_follower = FollowFiducial(robot, options)
-            time.sleep(.1)
-            if not options.use_world_objects and str.lower(sys.platform) != 'darwin':
-                # Display the detected bounding boxes on the images when using the april tag library.
-                # This is disabled for MacOS-X operating systems.
-                image_viewer = DisplayImagesAsync(fiducial_follower)
-                image_viewer.start()
-            fiducial_follower.start()
+        fiducial_follower = FollowFiducial(robot, options)
+        time.sleep(.1)
+        
+        # Go to reference point from the board
+        print('SPOT Walking to Board')
+        found = fiducial_follower.start()
+        
+        if not found:
+            return False
+        
+        time.sleep(2)
+        # Start placing function
+        print('SPOT Placing Piece...')
+        # joint_move.
+        # Back up from reference point
+        # Reusing provided functions
+        # hopefully spot backs up from the reference point here
+        print('SPOT Backing Up from Ref Point')
+        # fiducial_follower.offset_tag_pose(board_properties, fiducial_follower._tag_offset)
+        
+        # mobility_params = fiducial_follower.set_mobility_params()
+        # tag_cmd = RobotCommandBuilder.synchro_se2_trajectory_point_command(
+        #     goal_x=self._current_tag_world_pose[0], goal_y=self._current_tag_world_pose[1],
+        #     goal_heading=self._angle_desired, frame_name=VISION_FRAME_NAME, params=mobility_params,
+        #     body_height=0.0, locomotion_hint=spot_command_pb2.HINT_AUTO)
+        time.sleep(3)
+        return True
     except RpcError as err:
         LOGGER.error('Failed to communicate with robot: %s', err)
-    finally:
-        if image_viewer is not None:
-            image_viewer.stop()
 
     return False
-
-
-if __name__ == '__main__':
-    if not main():
-        sys.exit(1)
