@@ -6,14 +6,9 @@
 
 """ Detect and follow fiducial tags. """
 import logging
-import math
-import signal
-import sys
-import threading
 import time
 from sys import platform
 
-import cv2
 import numpy as np
 
 import bosdyn.client
@@ -22,24 +17,22 @@ from bosdyn import geometry
 from bosdyn.api import geometry_pb2, image_pb2, trajectory_pb2, world_object_pb2
 from bosdyn.api.geometry_pb2 import SE2Velocity, SE2VelocityLimit, Vec2
 from bosdyn.api.spot import robot_command_pb2 as spot_command_pb2
-from bosdyn.client import ResponseError, RpcError, create_standard_sdk
+from bosdyn.client import RpcError, create_standard_sdk
 from bosdyn.client.frame_helpers import (BODY_FRAME_NAME, VISION_FRAME_NAME, get_a_tform_b,
                                          get_vision_tform_body)
-from bosdyn.client.image import ImageClient, build_image_request
+from bosdyn.client.image import ImageClient
 from bosdyn.client.lease import LeaseClient
-from bosdyn.client.math_helpers import Quat, SE3Pose
+from bosdyn.client.math_helpers import Quat
 from bosdyn.client.power import PowerClient
-from bosdyn.client.robot_command import RobotCommandBuilder, RobotCommandClient, blocking_stand
+from bosdyn.client.robot_command import RobotCommandBuilder, RobotCommandClient
 from bosdyn.client.robot_id import RobotIdClient, version_tuple
 from bosdyn.client.robot_state import RobotStateClient
 from bosdyn.client.world_object import WorldObjectClient
 
-import arm_joint_move as joint_move
-
 #pylint: disable=no-member
 LOGGER = logging.getLogger()
-ref_point = None
-board_properties = None
+global ref_point
+global board_properties
 # Use this length to make sure we're commanding the head of the robot
 # to a position instead of the center.
 BODY_LENGTH = 1.1
@@ -69,8 +62,7 @@ class FollowFiducial(object):
         # Indicator if fiducial detection's should be from the world object service using
         # spot's perception system or detected with the apriltag library. If the software version
         # does not include the world object service, then default to april tag library.
-        self._use_world_object_service = (options.use_world_objects and
-                                          self.check_if_version_has_world_objects(self._robot_id))
+        self._use_world_object_service = self.check_if_version_has_world_objects(self._robot_id)
 
         # Indicators for movement and image displays.
         self._standup = True  # Stand up the robot.
@@ -294,28 +286,9 @@ class FollowFiducial(object):
         traj = trajectory_pb2.SE3Trajectory(points=[point])
         return spot_command_pb2.BodyControlParams(base_offset_rt_footprint=traj)
 
-    @staticmethod
-    def rotate_image(image, source_name):
-        """Rotate the image so that it is always displayed upright."""
-        if source_name == 'frontleft_fisheye_image':
-            image = cv2.rotate(image, rotateCode=0)
-        elif source_name == 'right_fisheye_image':
-            image = cv2.rotate(image, rotateCode=1)
-        elif source_name == 'frontright_fisheye_image':
-            image = cv2.rotate(image, rotateCode=0)
-        return image
-
-    @staticmethod
-    def make_camera_matrix(ints):
-        """Transform the ImageResponse proto intrinsics into a camera matrix."""
-        camera_matrix = np.array([[ints.focal_length.x, ints.skew.x, ints.principal_point.x],
-                                [ints.skew.y, ints.focal_length.y, ints.principal_point.y],
-                                [0, 0, 1]])
-        return camera_matrix
 
 
-
-def place_piece(robot, options, board_ref):
+def fiducial_follow(robot, options, board_ref):
     global ref_point
     global board_properties
     
@@ -331,31 +304,54 @@ def place_piece(robot, options, board_ref):
         fiducial_follower = FollowFiducial(robot, options)
         time.sleep(.1)
         
-        # Go to reference point from the board
         print('SPOT Walking to Board')
-        found = fiducial_follower.start()
-        
-        if not found:
-            return False
-        
-        time.sleep(2)
-        # Start placing function
-        print('SPOT Placing Piece...')
-        # joint_move.
-        # Back up from reference point
-        # Reusing provided functions
-        # hopefully spot backs up from the reference point here
-        print('SPOT Backing Up from Ref Point')
-        # fiducial_follower.offset_tag_pose(board_properties, fiducial_follower._tag_offset)
-        
-        # mobility_params = fiducial_follower.set_mobility_params()
-        # tag_cmd = RobotCommandBuilder.synchro_se2_trajectory_point_command(
-        #     goal_x=self._current_tag_world_pose[0], goal_y=self._current_tag_world_pose[1],
-        #     goal_heading=self._angle_desired, frame_name=VISION_FRAME_NAME, params=mobility_params,
-        #     body_height=0.0, locomotion_hint=spot_command_pb2.HINT_AUTO)
-        time.sleep(3)
-        return True
+        return fiducial_follower.start()
     except RpcError as err:
         LOGGER.error('Failed to communicate with robot: %s', err)
 
     return False
+
+# isolating code to test
+if __name__ == "__main__":    
+    ref_point = 535
+    fiducial_follower = None
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    bosdyn.client.util.add_base_arguments(parser)
+    parser.add_argument('--distance-margin', default=.5,
+                        help='Distance [meters] that the robot should stop from the fiducial.')
+    parser.add_argument('--limit-speed', default=True, type=lambda x: (str(x).lower() == 'true'),
+                        help='If the robot should limit its maximum speed.')
+    parser.add_argument('--avoid-obstacles', default=False, type=lambda x:
+                        (str(x).lower() == 'true'),
+                        help='If the robot should have obstacle avoidance enabled.')
+    parser.add_argument(
+        '--use-world-objects', default=True, type=lambda x: (str(x).lower() == 'true'),
+        help='If fiducials should be from the world object service or the apriltag library.')
+    options = parser.parse_args()
+
+    # Create robot object.
+    sdk = create_standard_sdk('FollowFiducialClient')
+    robot = sdk.create_robot(options.hostname)
+
+    fiducial_follower = None
+    image_viewer = None
+    try:
+        bosdyn.client.util.authenticate(robot)
+        robot.start_time_sync()
+
+        # Verify the robot is not estopped.
+        assert not robot.is_estopped(), 'Robot is estopped. ' \
+                                        'Please use an external E-Stop client, ' \
+                                        'such as the estop SDK example, to configure E-Stop.'
+
+        fiducial_follower = FollowFiducial(robot, options)
+        time.sleep(.1)
+
+        lease_client = robot.ensure_client(LeaseClient.default_service_name)
+        with bosdyn.client.lease.LeaseKeepAlive(lease_client, must_acquire=True,
+                                                return_at_exit=True):
+            fiducial_follower.start()
+    except RpcError as err:
+        LOGGER.error('Failed to communicate with robot: %s', err)

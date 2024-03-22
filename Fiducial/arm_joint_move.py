@@ -16,25 +16,14 @@ import bosdyn.client
 import bosdyn.client.estop
 import bosdyn.client.lease
 import bosdyn.client.util
-from bosdyn.api import arm_command_pb2, estop_pb2, robot_command_pb2, synchronized_command_pb2
-from bosdyn.client.estop import EstopClient
+from bosdyn.api import arm_command_pb2, robot_command_pb2, synchronized_command_pb2
+from bosdyn.client.lease import LeaseClient
+
 from bosdyn.client.robot_command import (RobotCommandBuilder, RobotCommandClient,
                                          block_until_arm_arrives, blocking_stand)
-from bosdyn.client.robot_state import RobotStateClient
 from bosdyn.util import duration_to_seconds
 
-from main import main as mmm
-
-
-def verify_estop(robot):
-    """Verify the robot is not estopped"""
-
-    client = robot.ensure_client(EstopClient.default_service_name)
-    if client.get_status().stop_level != estop_pb2.ESTOP_LEVEL_NONE:
-        error_message = 'Robot is estopped. Please use an external E-Stop client, such as the ' \
-                        'estop SDK example, to configure E-Stop.'
-        robot.logger.error(error_message)
-        raise Exception(error_message)
+from dotenv import load_dotenv
 
 
 def make_robot_command(arm_joint_traj):
@@ -66,15 +55,30 @@ def print_feedback(feedback_resp, logger):
         logger.info(f'    {idx}: {pos_str}')
     return duration_to_seconds(joint_move_feedback.time_to_goal)
 
+def block_until_arm_arrives_with_prints(robot, command_client, cmd_id):
+    """Block until the arm arrives at the goal and print the distance remaining.
+        Note: a version of this function is available as a helper in robot_command
+        without the prints.
+    """
+    while True:
+        feedback_resp = command_client.robot_command_feedback(cmd_id)
+        measured_pos_distance_to_goal = feedback_resp.feedback.synchronized_feedback.arm_command_feedback.arm_cartesian_feedback.measured_pos_distance_to_goal
+        measured_rot_distance_to_goal = feedback_resp.feedback.synchronized_feedback.arm_command_feedback.arm_cartesian_feedback.measured_rot_distance_to_goal
+        robot.logger.info('Distance to go: %.2f meters, %.2f radians',
+                          measured_pos_distance_to_goal, measured_rot_distance_to_goal)
 
-def joint_move_example(robot,command_client):
+        if feedback_resp.feedback.synchronized_feedback.arm_command_feedback.arm_cartesian_feedback.status == arm_command_pb2.ArmCartesianCommand.Feedback.STATUS_TRAJECTORY_COMPLETE:
+            robot.logger.info('Move complete.')
+            break
+        time.sleep(0.1)
+
+def joint_move_example(robot, move, id, command_client):
     """A simple example of using the Boston Dynamics API to command Spot's arm to perform joint moves."""
     # parser = argparse.ArgmentParser()
     # bosdyn.client.util.add_base_arguments(parser)
     # options = parser.parse_arg()
+    
     try:
-        # move = (2,1)
-        move = mmm.main()
         if move[0] == 2:
              bottomRow(robot, command_client)
         elif move[0] == 1:
@@ -84,6 +88,24 @@ def joint_move_example(robot,command_client):
              topRow(robot, command_client)
         else:
              print("cannot do this....")
+        
+        # Make the open gripper RobotCommand
+        gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(1.0)
+        
+        # Combine the arm and gripper commands into one RobotCommand
+        command = RobotCommandBuilder.build_synchro_command(gripper_command, gripper_command)
+        
+        # Send the request
+        cmd_id = command_client.robot_command(command)
+        
+        # Wait until the arm arrives at the goal.
+        block_until_arm_arrives_with_prints(robot, command_client, cmd_id)
+        
+        #Stow
+        print('Carrying Finished, Stowing...')
+        stow = RobotCommandBuilder.arm_stow_command()
+        block_until_arm_arrives(command_client, command_client.robot_command(stow), 3.0)
+        
         return True
     except Exception as exc:  # pylint: disable=broad-except
         logger = bosdyn.client.util.get_logger()
@@ -117,11 +139,14 @@ def bottomRow(robot, command_client):
         # Query for feedback
         feedback_resp = command_client.robot_command_feedback(cmd_id)
         robot.logger.info('Feedback for Example 2: planner modifies trajectory')
-        time_to_goal = print_feedback(feedback_resp, robot.logger)
-        time.sleep(time_to_goal)
+        # time_to_goal = print_feedback(feedback_resp, robot.logger)
+        # time.sleep(time_to_goal)
 
         # time.sleep(3)
         print('BOTTOM ROW')
+        
+        #RETURN CMD_ID
+        
 def middleRow(robot, command_client):
         # Example 2: Single point trajectory with maximum acceleration/velocity constraints specified such
         # that the solver has to modify the desired points to honor the constraints
@@ -148,8 +173,8 @@ def middleRow(robot, command_client):
         # Query for feedback
         feedback_resp = command_client.robot_command_feedback(cmd_id)
         robot.logger.info('Feedback for Example 2: planner modifies trajectory')
-        time_to_goal = print_feedback(feedback_resp, robot.logger)
-        time.sleep(time_to_goal)
+        # time_to_goal = print_feedback(feedback_resp, robot.logger)
+        # time.sleep(time_to_goal)
 
         time.sleep(3)
         print('MIDDLE ROW')
@@ -182,8 +207,8 @@ def topRow(robot,command_client):
         # Query for feedback
         feedback_resp = command_client.robot_command_feedback(cmd_id)
         robot.logger.info('Feedback for Example 2: planner modifies trajectory')
-        time_to_goal = print_feedback(feedback_resp, robot.logger)
-        time.sleep(time_to_goal)
+        # time_to_goal = print_feedback(feedback_resp, robot.logger)
+        # time.sleep(time_to_goal)
 
         # time.sleep(3)
         print('TOP ROW')
@@ -232,65 +257,36 @@ def stow(robot, command_client):
      
         print("done")
 
-def powerOFF(robot_state_client, robot, command_client):
-        # Power the robot off. By specifying "cut_immediately=False", a safe power off command
-        # is issued to the robot. This will attempt to sit the robot before powering off.
-        robot.power_off(cut_immediately=False, timeout_sec=20)
-        assert not robot.is_powered_on(), 'Robot power off failed.'
-        robot.logger.info('Robot safely powered off.')
 
-
-def main():
+def place_piece(robot, move, id):
+    robot.time_sync.wait_for_sync()
+    command_client = robot.ensure_client(RobotCommandClient.default_service_name)
+    joint_move_example(robot, move, id, command_client)
+    
+    
+# Testing function
+if __name__ == '__main__':
+    load_dotenv()
     parser = argparse.ArgumentParser()
     bosdyn.client.util.add_base_arguments(parser)
-    config = parser.parse_args()
-
-
-    # See hello_spot.py for an explanation of these lines.
-    bosdyn.client.util.setup_logging(config.verbose)
-
-    sdk = bosdyn.client.create_standard_sdk('ArmJointMoveClient')
-    robot = sdk.create_robot(config.hostname)
+    
+    options = parser.parse_args()
+    
+    sdk = bosdyn.client.create_standard_sdk('TicTacSPOT')
+    robot = sdk.create_robot("192.168.80.3")
     bosdyn.client.util.authenticate(robot)
     robot.time_sync.wait_for_sync()
-
-    assert robot.has_arm(), 'Robot requires an arm to run this example.'
-
-    # Verify the robot is not estopped and that an external application has registered and holds
-    # an estop endpoint.
-    verify_estop(robot)
-
-    robot_state_client = robot.ensure_client(RobotStateClient.default_service_name)
-
-    lease_client = robot.ensure_client(bosdyn.client.lease.LeaseClient.default_service_name)
-
-    lease_client.take()
+    lease_client = robot.ensure_client(LeaseClient.default_service_name)
+    command_client = robot.ensure_client(RobotCommandClient.default_service_name)
 
     with bosdyn.client.lease.LeaseKeepAlive(lease_client, must_acquire=True, return_at_exit=True):
-        # Now, we are ready to power on the robot. This call will block until the power
-        # is on. Commands would fail if this did not happen. We can also check that the robot is
-        # powered at any point.
-        robot.logger.info('Powering on robot... This may take a several seconds.')
-        robot.power_on(timeout_sec=20)
-        assert robot.is_powered_on(), 'Robot power on failed.'
-        robot.logger.info('Robot powered on.')
-
-        # Tell the robot to stand up. The command service is used to issue commands to a robot.
-        # The set of valid commands for a robot depends on hardware configuration. See
-        # RobotCommandBuilder for more detailed examples on command building. The robot
-        # command service requires timesync between the robot and the client.
-        robot.logger.info('Commanding robot to stand...')
-        command_client = robot.ensure_client(RobotCommandClient.default_service_name)
-        blocking_stand(command_client, timeout_sec=10)
-        robot.logger.info('Robot standing.')
-
-        joint_move_example(robot, command_client)
-    
-    
-
-
-if __name__ == '__main__':
-    if not main():
-        sys.exit(1)
-    else:
-         main()
+        robot.logger.info("Powering on robot... This may take a few seconds.")
+        robot.power_on(timeout_sec=40)
+        assert robot.is_powered_on(), "Robot power on failed."
+        robot.logger.info("Robot is powered on.")
+        
+        assert robot.has_arm(), 'Robot requires an arm to run.'
+        
+        blocking_stand(command_client)
+        time.sleep(.35)
+        place_piece(robot, (0, 1), 526)

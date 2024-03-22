@@ -1,24 +1,14 @@
 #MAIN GAMEPLAY LOOP
-import os
-import cv2 as cv
-import numpy as np
 import argparse
-from queue import Queue
 import tictactoe as ttt
 import boardInput as bi
 import logging
-import math
-import signal
-import sys
-import threading
 from dotenv import load_dotenv
 import time
-from sys import platform
-from PIL import Image
 import bosdyn.client
 import bosdyn.client.util
 import bosdyn.geometry
-from bosdyn.api import geometry_pb2, image_pb2, trajectory_pb2, world_object_pb2
+from bosdyn.api import geometry_pb2, image_pb2, trajectory_pb2, world_object_pb2, estop_pb2
 from bosdyn.api.geometry_pb2 import SE2Velocity, SE2VelocityLimit, Vec2
 from bosdyn.api.spot import robot_command_pb2 as spot_command_pb2
 from bosdyn.client import ResponseError, RpcError, create_standard_sdk
@@ -33,17 +23,20 @@ from bosdyn.client.robot_id import RobotIdClient, version_tuple
 from bosdyn.client.robot_state import RobotStateClient
 from bosdyn.client.world_object import WorldObjectClient
 from bosdyn.client.network_compute_bridge_client import NetworkComputeBridgeClient
+from bosdyn.client.estop import EstopClient
 from bosdyn.client.manipulation_api_client import ManipulationApiClient
 
 import fetch_only_pickup as fetch
 import fiducial_follow as follow
+import arm_joint_move as place
+import bosdyn.client.estop
 
 #pylint: disable=no-member
 LOGGER = logging.getLogger()
-BOARD_REF = 527
-LIST_IDS = [528, 529, 530,
+BOARD_REF = 535
+LIST_IDS = [526, 527, 528, 529, 530,
             531, 532, 533,
-            534, 535, 526]
+            534]
 # Use this length to make sure we're commanding the head of the robot
 # to a position instead of the center.
 BODY_LENGTH = 1.1
@@ -60,6 +53,16 @@ def get_input():
         except ValueError:
             print("Invalid input. Try again.")
     return x
+
+def verify_estop(robot):
+    """Verify the robot is not estopped"""
+
+    client = robot.ensure_client(EstopClient.default_service_name)
+    if client.get_status().stop_level != estop_pb2.ESTOP_LEVEL_NONE:
+        error_message = 'Robot is estopped. Please use an external E-Stop client, such as the ' \
+                        'estop SDK example, to configure E-Stop.'
+        robot.logger.error(error_message)
+        raise Exception(error_message)
 
 #------------------------------------------Detect Fiducial main function----------------------------------------------------------- 
 #Call this function to start and detect board fiducials
@@ -79,12 +82,11 @@ def detectFiducial(expectedNumberOfFiducials, pitch):
     fiducial = set()
     detect = False
     while found != expectedNumberOfFiducials and maxNumberOfIterations > 0:
-        if _use_world_object_service:
-            # Get the all fiducial objects
-            fiducial = find_fiducials()
-            if fiducial is not None:
-                found = len(fiducial)
-                detect = True
+        # Get the all fiducial objects
+        fiducial = find_fiducials()
+        if fiducial is not None:
+            found = len(fiducial)
+            detect = True
         if detect:
             print(fiducial, found, maxNumberOfIterations)
         maxNumberOfIterations-= 1
@@ -162,14 +164,10 @@ def main():
     parser.add_argument('--avoid-obstacles', default=False, type=lambda x:
                         (str(x).lower() == 'true'),
                         help='If the robot should have obstacle avoidance enabled.')
-    parser.add_argument(
-        '--use-world-objects', default=True, type=lambda x: (str(x).lower() == 'true'),
-        help='If fiducials should be from the world object service or the apriltag library.')
     
     options = parser.parse_args()
 
 # ===============================Start SPOT/Power On===========================================
-    global _use_world_object_service
     global _world_object_client
     global lease_client
     global command_client
@@ -178,10 +176,7 @@ def main():
     sdk.register_service_client(NetworkComputeBridgeClient)
     robot = sdk.create_robot(options.hostname)
 
-    _use_world_object_service = options.use_world_objects
     
-    fiducial_follower = None
-    image_viewer = None
     bosdyn.client.util.authenticate(robot)
     robot.time_sync.wait_for_sync()
 
@@ -200,6 +195,9 @@ def main():
         robot.power_on(timeout_sec=40)
         assert robot.is_powered_on(), "Robot power on failed."
         robot.logger.info("Robot is powered on.")
+        
+        assert robot.has_arm(), 'Robot requires an arm to run.'
+        verify_estop(robot)
 
         #Spot Stand Up
         robot.logger.info("Commanding Spot to stand...")
@@ -250,7 +248,8 @@ def main():
         time.sleep(3)
         
         #2. Minimax
-        move, id = ttt.minimax(board.getBoardState())
+        #move, id = ttt.minimax(board.getBoardState())
+        move = (2,0)
         print(move, id)
         
         #3. Pick Piece
@@ -260,12 +259,18 @@ def main():
                       lease_client, manipulation_api_client)
         time.sleep(1) # Wait for pickup to finish
         
-        # 4. Set up Position / 5. Place Piece / 6. Backup From Reference Point
+        # 4. Set up Position
         print("Placing Piece....")
-        placing = follow.place_piece(robot, options, BOARD_REF)
+        placing = follow.fiducial_follow(robot, options, BOARD_REF)
         
         if not placing:
             LOGGER.error('Failed to place piece')
+        
+        # 5. Place Piece
+        place.place_piece(robot, move, id)
+        
+        # 6. Backup From Reference Point
+        
         
         # 7. Gameover?
         piece = ttt.winner(board.getBoardState())

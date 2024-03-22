@@ -18,11 +18,10 @@ import bosdyn.client.util
 from bosdyn.api import (basic_command_pb2, geometry_pb2, image_pb2, manipulation_api_pb2,
                         network_compute_bridge_pb2, robot_state_pb2)
 from bosdyn.client import frame_helpers, math_helpers
-from bosdyn.client.lease import LeaseClient, LeaseKeepAlive
 from bosdyn.client.manipulation_api_client import ManipulationApiClient
 from bosdyn.client.network_compute_bridge_client import NetworkComputeBridgeClient
 from bosdyn.client.robot_command import (RobotCommandBuilder, RobotCommandClient,
-                                         block_until_arm_arrives)
+                                         block_for_trajectory_cmd, block_until_arm_arrives)
 from bosdyn.client.robot_state import RobotStateClient
 
 kImageSources = [
@@ -153,52 +152,8 @@ def find_center_px(polygon):
     return (x, y)
 
 
-def block_for_trajectory_cmd(command_client, cmd_id, timeout_sec=None, verbose=False):
-    """Helper that blocks until a trajectory command reaches STATUS_AT_GOAL or a timeout is
-        exceeded.
 
-       Args:
-        command_client: robot command client, used to request feedback
-        cmd_id: command ID returned by the robot when the trajectory command was sent
-        timeout_sec: optional number of seconds after which we'll return no matter what the
-                        robot's state is.
-        verbose: if we should print state at 10 Hz.
-       Returns:
-        True if reaches STATUS_AT_GOAL, False otherwise.
-    """
-    start_time = time.time()
-
-    if timeout_sec is not None:
-        end_time = start_time + timeout_sec
-        now = time.time()
-
-    while timeout_sec is None or now < end_time:
-        feedback_resp = command_client.robot_command_feedback(cmd_id)
-
-        current_state = feedback_resp.feedback.mobility_feedback.se2_trajectory_feedback.status
-
-        if verbose:
-            current_state_str = basic_command_pb2.SE2TrajectoryCommand.Feedback.Status.Name(
-                current_state)
-
-            current_time = time.time()
-            print(
-                'Walking: ({time:.1f} sec): {state}'.format(time=current_time - start_time,
-                                                            state=current_state_str),
-                end='                \r')
-
-        if current_state == basic_command_pb2.SE2TrajectoryCommand.Feedback.STATUS_AT_GOAL:
-            return True
-
-        time.sleep(0.1)
-        now = time.time()
-
-    if verbose:
-        print('block_for_trajectory_cmd: timeout exceeded.')
-
-    return False
-
-def pick_up(model, ml_service, confidence, robot, network_compute_client, robot_state_client, command_client, lease_client, manipulation_api_client):
+def pick_up(_model, _ml_service, confidence, robot, network_compute_client, robot_state_client, command_client, lease_client, manipulation_api_client):
     cv2.namedWindow("Fetch")
     cv2.waitKey(500)
     # Time sync is necessary so that time-based filter requests can be converted
@@ -214,7 +169,7 @@ def pick_up(model, ml_service, confidence, robot, network_compute_client, robot_
         while not holding_piece:
             # Capture an image and run ML on it.
             X, image, vision_tform_dogtoy = get_obj_and_img(
-                network_compute_client, ml_service, model,
+                network_compute_client, _ml_service, _model,
                 confidence, kImageSources, 'X')
 
             if X is None:
@@ -256,7 +211,7 @@ def pick_up(model, ml_service, confidence, robot, network_compute_client, robot_
                                                     end_time)
 
             # Wait until the robot reports that it is at the goal.
-            block_for_trajectory_cmd(command_client, cmd_id, timeout_sec=5, verbose=True)
+            block_for_trajectory_cmd(command_client, cmd_id, timeout_sec=5)
             # -------------------------
 
             # The ML result is a bounding box.  Find the center.
@@ -273,7 +228,7 @@ def pick_up(model, ml_service, confidence, robot, network_compute_client, robot_
             # We can specify where in the gripper we want to grasp. About halfway is generally good for
             # small objects like this. For a bigger object like a shoe, 0 is better (use the entire
             # gripper)
-            grasp.grasp_params.grasp_palm_to_fingertip = 0
+            grasp.grasp_params.grasp_palm_to_fingertip = 0.6
 
             # Tell the grasping system that we want a top-down grasp.
 
@@ -339,7 +294,7 @@ def pick_up(model, ml_service, confidence, robot, network_compute_client, robot_
                 failed = current_state in failed_states
                 grasp_done = current_state == manipulation_api_pb2.MANIP_STATE_GRASP_SUCCEEDED or failed
 
-                time.sleep(0.1)
+                time.sleep(0.5)
 
             holding_piece = not failed
 
@@ -445,3 +400,43 @@ def wait_until_grasp_state_updates(grasp_override_command, robot_state_client):
         updated = (not has_grasp_override or
                    grasp_state_updated) and (not has_carry_state_override or carry_state_updated)
         time.sleep(0.1)
+
+
+# if __name__ == "__main__":
+#     load_dotenv()
+#     #==================================Parse args===================================================
+#     parser = argparse.ArgumentParser()
+#     bosdyn.client.util.add_base_arguments(parser)
+#     parser.add_argument('-s', '--ml-service',
+#                         help='Service name of external machine learning server.', required=True)
+#     parser.add_argument('-m', '--model', help='Model name running on the external server.',
+#                         required=True)
+#     parser.add_argument('-c', '--confidence-piece',
+#                         help='Minimum confidence to return an object for the dogoy (0.0 to 1.0)',
+#                         default=0.5, type=float)
+#     parser.add_argument('-d', '--distance-margin', default=.5,
+#                         help='Distance [meters] that the robot should stop from the fiducial.')
+#     parser.add_argument('--limit-speed', default=True, type=lambda x: (str(x).lower() == 'true'),
+#                         help='If the robot should limit its maximum speed.')
+#     parser.add_argument('--avoid-obstacles', default=False, type=lambda x:
+#                         (str(x).lower() == 'true'),
+#                         help='If the robot should have obstacle avoidance enabled.')
+    
+#     options = parser.parse_args()
+    
+#     sdk = bosdyn.client.create_standard_sdk('TicTacSPOT')
+#     sdk.register_service_client(NetworkComputeBridgeClient)
+#     robot = sdk.create_robot(options.hostname)
+    
+    
+#     bosdyn.client.util.authenticate(robot)
+#     robot.time_sync.wait_for_sync()
+
+#     network_compute_client = robot.ensure_client(NetworkComputeBridgeClient.default_service_name)
+#     robot_state_client = robot.ensure_client(RobotStateClient.default_service_name)
+#     command_client = robot.ensure_client(RobotCommandClient.default_service_name)
+#     lease_client = robot.ensure_client(LeaseClient.default_service_name)
+#     manipulation_api_client = robot.ensure_client(ManipulationApiClient.default_service_name)
+#     _world_object_client = robot.ensure_client(WorldObjectClient.default_service_name)
+    
+#     with bosdyn.client.lease.LeaseKeepAlive(lease_client, must_acquire=True, return_at_exit=True):
