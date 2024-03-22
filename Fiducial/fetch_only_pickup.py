@@ -221,7 +221,7 @@ def pick_up(model, ml_service, confidence, robot, network_compute_client, robot_
                 # Didn't find anything, keep searching.
                 continue
 
-            # If we have already dropped the toy off, make sure it has moved a sufficient amount before
+            # If we have already dropped the X Piece off, make sure it has moved a sufficient amount before
             # picking it up again
             if vision_tform_hand_at_drop is not None and pose_dist(
                     vision_tform_hand_at_drop, vision_tform_dogtoy) < 0.5:
@@ -255,8 +255,8 @@ def pick_up(model, ml_service, confidence, robot, network_compute_client, robot_
                                                     end_time_secs=time.time() +
                                                     end_time)
 
-            # # Wait until the robot reports that it is at the goal.
-            # block_for_trajectory_cmd(command_client, cmd_id, timeout_sec=5, verbose=True)
+            # Wait until the robot reports that it is at the goal.
+            block_for_trajectory_cmd(command_client, cmd_id, timeout_sec=5, verbose=True)
             # -------------------------
 
             # The ML result is a bounding box.  Find the center.
@@ -273,7 +273,7 @@ def pick_up(model, ml_service, confidence, robot, network_compute_client, robot_
             # We can specify where in the gripper we want to grasp. About halfway is generally good for
             # small objects like this. For a bigger object like a shoe, 0 is better (use the entire
             # gripper)
-            grasp.grasp_params.grasp_palm_to_fingertip = 0.6
+            grasp.grasp_params.grasp_palm_to_fingertip = 0
 
             # Tell the grasping system that we want a top-down grasp.
 
@@ -339,7 +339,7 @@ def pick_up(model, ml_service, confidence, robot, network_compute_client, robot_
                 failed = current_state in failed_states
                 grasp_done = current_state == manipulation_api_pb2.MANIP_STATE_GRASP_SUCCEEDED or failed
 
-                time.sleep(0.5)
+                time.sleep(0.1)
 
             holding_piece = not failed
 

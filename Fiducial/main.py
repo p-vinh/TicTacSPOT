@@ -192,6 +192,7 @@ def main():
     manipulation_api_client = robot.ensure_client(ManipulationApiClient.default_service_name)
     _world_object_client = robot.ensure_client(WorldObjectClient.default_service_name)
     
+    # ===============================Get Lease===========================================
     with bosdyn.client.lease.LeaseKeepAlive(lease_client, must_acquire=True, return_at_exit=True):
         
         #Powering up robot
@@ -283,43 +284,5 @@ def main():
         time.sleep(10)            
             
 
-
-
- # ===============================Get Lease===========================================
-            
-    # elapsed_time = time.time() - start_time
-    # interval = 3
-    # while ttt.terminal(bi.boardState):
-    #     # Update Board
-    #     if elapsed_time > interval:
-    #         detectArray = convertTo2DArray(markerIds)
-    #         print("Input:")
-    #         print(detectArray)
-    #         bi.updateTotalPieces(bi)
-    #         valid = bi.checkValidInput(detectArray)
-            
-    #         if (valid):
-    #             if (player == ttt.X): #Players Turn                   
-    #                 bi.updateBoard(detectArray,player,bi)
-    #                 print("Player is")
-    #                 print(player)
-    #                 bi.totalXPieces += 1
-    #         if (player == ttt.O): # AI Turn        
-    #             print("AI Move: ")
-    #             move = ttt.minimax(bi.boardState)
-    #             print(move)
-    #             bi.boardState = ttt.result(bi.boardState, move)
-
-    #             bi.totalOPieces += 1
-    #         displayBoard()
-            
-    #         if ttt.terminal(bi.boardState):
-    #             print("Winner is")
-    #             print(ttt.winner(bi.boardState))
-
-            
-            
-    #         player = ttt.player(bi.boardState)  
-    #         start_time = time.time()
 if __name__ == '__main__':
     main()
