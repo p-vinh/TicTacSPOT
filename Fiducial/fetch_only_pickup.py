@@ -153,14 +153,21 @@ def find_center_px(polygon):
 
 
 
-def pick_up(_model, _ml_service, confidence, robot, network_compute_client, robot_state_client, command_client, lease_client, manipulation_api_client):
+def pick_up(options, robot):
     cv2.namedWindow("Fetch")
     cv2.waitKey(500)
     # Time sync is necessary so that time-based filter requests can be converted
     robot.time_sync.wait_for_sync()
 
+    network_compute_client = robot.ensure_client(NetworkComputeBridgeClient.default_service_name)
+    robot_state_client = robot.ensure_client(RobotStateClient.default_service_name)
+    command_client = robot.ensure_client(RobotCommandClient.default_service_name)
+    manipulation_api_client = robot.ensure_client(ManipulationApiClient.default_service_name)
     # This script assumes the robot is already standing via the tablet.  We'll take over from the
     # tablet.
+    _model = options.model
+    _ml_service = options.ml_service
+    confidence = options.confidence_piece
     
     vision_tform_hand_at_drop = None
 

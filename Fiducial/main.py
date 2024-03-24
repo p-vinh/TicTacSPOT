@@ -180,11 +180,8 @@ def main():
     bosdyn.client.util.authenticate(robot)
     robot.time_sync.wait_for_sync()
 
-    network_compute_client = robot.ensure_client(NetworkComputeBridgeClient.default_service_name)
-    robot_state_client = robot.ensure_client(RobotStateClient.default_service_name)
     command_client = robot.ensure_client(RobotCommandClient.default_service_name)
     lease_client = robot.ensure_client(LeaseClient.default_service_name)
-    manipulation_api_client = robot.ensure_client(ManipulationApiClient.default_service_name)
     _world_object_client = robot.ensure_client(WorldObjectClient.default_service_name)
     
     # ===============================Get Lease===========================================
@@ -254,9 +251,7 @@ def main():
         
         #3. Pick Piece
         robot.logger.info('Sending Robot Pickup Request')
-        fetch.pick_up(options.model, options.ml_service, options.confidence_piece, robot,
-                      network_compute_client, robot_state_client, command_client,
-                      lease_client, manipulation_api_client)
+        fetch.pick_up(options, robot)
         time.sleep(1) # Wait for pickup to finish
         
         # 4. Set up Position
