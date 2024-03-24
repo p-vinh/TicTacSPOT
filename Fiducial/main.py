@@ -265,6 +265,7 @@ def main():
         place.place_piece(robot, move, id)
         
         # 6. Backup From Reference Point
+        follow.backup_from_reference(5) # Backup 5 meters from reference point
         
         
         # 7. Gameover?

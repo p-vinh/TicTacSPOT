@@ -271,6 +271,33 @@ class FollowFiducial(object):
             object_rt_world.y - robot_to_object_ewrt_world_norm[1] * dist_margin
         ])
         return goto_rt_world, heading
+    
+    def backup_from_reference(self, distance=1.0):
+        """Backup the robot from the reference point by a specified distance."""
+        self._current_tag_world_pose, self._angle_desired = self.offset_tag_pose(board_properties, distance)
+        
+        mobility_params = self.set_mobility_params()
+        tag_cmd = RobotCommandBuilder.synchro_se2_trajectory_point_command(
+            goal_x=self._current_tag_world_pose[0], goal_y=self._current_tag_world_pose[1],
+            goal_heading=self._angle_desired, frame_name=VISION_FRAME_NAME, params=mobility_params,
+            body_height=0.0, locomotion_hint=spot_command_pb2.HINT_AUTO)
+        end_time = 5.0
+        if self._movement_on:
+            #Issue the command to the robot
+            self._robot_command_client.robot_command(lease=None, command=tag_cmd,
+                                                    end_time_secs=time.time() + end_time)
+            # #Feedback to check and wait until the robot is in the desired position or timeout
+            start_time = time.time()
+            current_time = time.time()
+            while (not self.final_state() and current_time - start_time < end_time):
+                time.sleep(.25)
+                current_time = time.time()
+            
+            # Align the robot to the fiducial
+            self._angle_desired = board_properties.rot.to_yaw()
+            self.command_robot_to_angle(self._angle_desired)
+        return
+
 
     def set_mobility_params(self):
         """Set robot mobility params to disable obstacle avoidance."""
