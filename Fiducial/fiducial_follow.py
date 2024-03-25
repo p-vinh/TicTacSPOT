@@ -196,14 +196,7 @@ class FollowFiducial(object):
         # this point.
         self._current_tag_world_pose, self._angle_desired = self.offset_tag_pose(
             fiducial_rt_world, self._tag_offset)
-        
-        # self._angle_desired += np.pi
                 
-        # if self._angle_desired > np.pi:
-        #     self._angle_desired -= 2 * np.pi
-        # elif self._angle_desired < -np.pi:
-        #     self._angle_desired += 2 * np.pi
-        
         #Command the robot to go to the tag in kinematic odometry frame
         mobility_params = self.set_mobility_params()
         tag_cmd = RobotCommandBuilder.synchro_se2_trajectory_point_command(
@@ -222,32 +215,18 @@ class FollowFiducial(object):
                 time.sleep(.25)
                 current_time = time.time()
             
-            print(board_properties.transforms_snapshot.child_to_parent_edge_map['fiducial_535'].parent_tform_child)
-            quat = Quat(board_properties.transforms_snapshot.child_to_parent_edge_map["fiducial_535"].parent_tform_child.rotation)
-            yaw_angle = quat.to_yaw()
-            self.command_robot_to_angle(yaw_angle)
-            
+            # print(board_properties.transforms_snapshot.child_to_parent_edge_map['fiducial_535'].parent_tform_child)
+            # self.command_robot_to_angle(self._angle_desired)
         return
     
     def command_robot_to_angle(self, angle):
         """Command the robot to turn to the desired angle."""
-        mobility_params = self.set_mobility_params()
-        tag_cmd = RobotCommandBuilder.synchro_se2_trajectory_point_command(
-            goal_x=self._current_tag_world_pose[0], goal_y=self._current_tag_world_pose[1],
-            goal_heading=angle, frame_name=VISION_FRAME_NAME, params=mobility_params,
-            body_height=0.0, locomotion_hint=spot_command_pb2.HINT_AUTO)
-        end_time = 5.0
+        current_position = get_vision_tform_body(self.robot_state.kinematic_state.transforms_snapshot)
         
-        if self._movement_on:
-            self._robot_command_client.robot_command(lease=None, command=tag_cmd,
-                                                    end_time_secs=time.time() + end_time)
-            #Feedback to check and wait until the robot is in the desired position or timeout
-            start_time = time.time()
-            current_time = time.time()
-            while (not self.final_state() and current_time - start_time < end_time):
-                time.sleep(.25)
-                current_time = time.time()
-        return
+        mobility_params = self.set_mobility_params()
+        rotate_cmd = RobotCommandBuilder.synchro_se2_trajectory_point_command(goal_x=current_position.x, goal_y=current_position.y, goal_heading=angle, frame_name=VISION_FRAME_NAME, params=mobility_params, body_height=0.0, locomotion_hint=spot_command_pb2.HINT_AUTO)
+        
+        self._robot_command_client.robot_command(lease=None, command=rotate_cmd)
 
     def final_state(self):
         """Check if the current robot state is within range of the fiducial position."""
