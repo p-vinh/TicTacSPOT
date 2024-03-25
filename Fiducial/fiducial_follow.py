@@ -24,11 +24,12 @@ from bosdyn.client.image import ImageClient
 from bosdyn.client.lease import LeaseClient
 from bosdyn.client.math_helpers import Quat
 from bosdyn.client.power import PowerClient
-from bosdyn.client.robot_command import RobotCommandBuilder, RobotCommandClient
+from bosdyn.client.robot_command import RobotCommandBuilder, RobotCommandClient, blocking_stand
 from bosdyn.client.robot_id import RobotIdClient, version_tuple
 from bosdyn.client.robot_state import RobotStateClient
 from bosdyn.client.world_object import WorldObjectClient
 
+from dotenv import load_dotenv
 #pylint: disable=no-member
 LOGGER = logging.getLogger()
 global ref_point
@@ -55,9 +56,9 @@ class FollowFiducial(object):
         self._tag_offset = float(options.distance_margin) + BODY_LENGTH / 2.0  # meters
 
         # Maximum speeds.
-        self._max_x_vel = 0.3
-        self._max_y_vel = 0.3
-        self._max_ang_vel = 1.0
+        self._max_x_vel = 0.3 # Default: 0.5
+        self._max_y_vel = 0.3 # Default: 0.5
+        self._max_ang_vel = 0.5 # Default: 1.0
 
         # Indicator if fiducial detection's should be from the world object service using
         # spot's perception system or detected with the apriltag library. If the software version
@@ -195,7 +196,14 @@ class FollowFiducial(object):
         # this point.
         self._current_tag_world_pose, self._angle_desired = self.offset_tag_pose(
             fiducial_rt_world, self._tag_offset)
-
+        
+        # self._angle_desired += np.pi
+                
+        # if self._angle_desired > np.pi:
+        #     self._angle_desired -= 2 * np.pi
+        # elif self._angle_desired < -np.pi:
+        #     self._angle_desired += 2 * np.pi
+        
         #Command the robot to go to the tag in kinematic odometry frame
         mobility_params = self.set_mobility_params()
         tag_cmd = RobotCommandBuilder.synchro_se2_trajectory_point_command(
@@ -214,9 +222,11 @@ class FollowFiducial(object):
                 time.sleep(.25)
                 current_time = time.time()
             
-            # Align the robot to the fiducial
-            self._angle_desired = fiducial_rt_world.rot.to_yaw()
-            self.command_robot_to_angle(self._angle_desired)
+            print(board_properties.transforms_snapshot.child_to_parent_edge_map['fiducial_535'].parent_tform_child)
+            quat = Quat(board_properties.transforms_snapshot.child_to_parent_edge_map["fiducial_535"].parent_tform_child.rotation)
+            yaw_angle = quat.to_yaw()
+            self.command_robot_to_angle(yaw_angle)
+            
         return
     
     def command_robot_to_angle(self, angle):
@@ -257,7 +267,7 @@ class FollowFiducial(object):
         yhat = np.cross(zhat, xhat)
         mat = np.array([xhat, yhat, zhat]).transpose()
         return Quat.from_matrix(mat).to_yaw()
-
+        
     def offset_tag_pose(self, object_rt_world, dist_margin=1.0):
         """Offset the go-to location of the fiducial and compute the desired heading."""
         robot_rt_world = get_vision_tform_body(self.robot_state.kinematic_state.transforms_snapshot)
@@ -293,9 +303,7 @@ class FollowFiducial(object):
                 time.sleep(.25)
                 current_time = time.time()
             
-            # Align the robot to the fiducial
-            self._angle_desired = board_properties.rot.to_yaw()
-            self.command_robot_to_angle(self._angle_desired)
+
         return
 
 
@@ -364,6 +372,7 @@ def fiducial_follow(robot, options, board_ref):
 
 # isolating code to test
 if __name__ == "__main__":    
+    load_dotenv()
     ref_point = 535
     fiducial_follower = None
     import argparse
@@ -374,7 +383,7 @@ if __name__ == "__main__":
                         help='Distance [meters] that the robot should stop from the fiducial.')
     parser.add_argument('--limit-speed', default=True, type=lambda x: (str(x).lower() == 'true'),
                         help='If the robot should limit its maximum speed.')
-    parser.add_argument('--avoid-obstacles', default=False, type=lambda x:
+    parser.add_argument('--avoid-obstacles', default=True, type=lambda x:
                         (str(x).lower() == 'true'),
                         help='If the robot should have obstacle avoidance enabled.')
     parser.add_argument(
@@ -385,24 +394,46 @@ if __name__ == "__main__":
     # Create robot object.
     sdk = create_standard_sdk('FollowFiducialClient')
     robot = sdk.create_robot(options.hostname)
-
+    
     fiducial_follower = None
     image_viewer = None
     try:
         bosdyn.client.util.authenticate(robot)
-        robot.start_time_sync()
-
-        # Verify the robot is not estopped.
-        assert not robot.is_estopped(), 'Robot is estopped. ' \
-                                        'Please use an external E-Stop client, ' \
-                                        'such as the estop SDK example, to configure E-Stop.'
+        
+        robot.time_sync.wait_for_sync()
+        
 
         fiducial_follower = FollowFiducial(robot, options)
         time.sleep(.1)
 
         lease_client = robot.ensure_client(LeaseClient.default_service_name)
+        
+        lease_client.take()
         with bosdyn.client.lease.LeaseKeepAlive(lease_client, must_acquire=True,
                                                 return_at_exit=True):
+            command_client = robot.ensure_client(RobotCommandClient.default_service_name)
+                    #Powering up robot
+            robot.logger.info("Powering on robot... This may take a few seconds.")
+            robot.power_on(timeout_sec=40)
+            assert robot.is_powered_on(), "Robot power on failed."
+            robot.logger.info("Robot is powered on.")
+            
+            assert robot.has_arm(), 'Robot requires an arm to run.'
+
+            #Spot Stand Up
+            robot.logger.info("Commanding Spot to stand...")
+            blocking_stand(command_client)
+            time.sleep(.35)
+
+            # Verify the robot is not estopped.
+            assert not robot.is_estopped(), 'Robot is estopped. ' \
+                                            'Please use an external E-Stop client, ' \
+                                            'such as the estop SDK example, to configure E-Stop.'
             fiducial_follower.start()
+            
+            print("Backing up from Reference Point")
+            fiducial_follower.backup_from_reference(3)
+            
+            
     except RpcError as err:
         LOGGER.error('Failed to communicate with robot: %s', err)

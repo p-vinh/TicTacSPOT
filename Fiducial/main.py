@@ -11,20 +11,12 @@ import bosdyn.geometry
 from bosdyn.api import geometry_pb2, image_pb2, trajectory_pb2, world_object_pb2, estop_pb2
 from bosdyn.api.geometry_pb2 import SE2Velocity, SE2VelocityLimit, Vec2
 from bosdyn.api.spot import robot_command_pb2 as spot_command_pb2
-from bosdyn.client import ResponseError, RpcError, create_standard_sdk
-from bosdyn.client.frame_helpers import (BODY_FRAME_NAME, VISION_FRAME_NAME, get_a_tform_b,
-                                         get_vision_tform_body)
-from bosdyn.client.image import ImageClient, build_image_request
 from bosdyn.client.lease import LeaseClient
-from bosdyn.client.math_helpers import Quat, SE3Pose
-from bosdyn.client.power import PowerClient
 from bosdyn.client.robot_command import RobotCommandBuilder, RobotCommandClient, blocking_stand
-from bosdyn.client.robot_id import RobotIdClient, version_tuple
-from bosdyn.client.robot_state import RobotStateClient
+from bosdyn.client.robot_id import version_tuple
 from bosdyn.client.world_object import WorldObjectClient
 from bosdyn.client.network_compute_bridge_client import NetworkComputeBridgeClient
 from bosdyn.client.estop import EstopClient
-from bosdyn.client.manipulation_api_client import ManipulationApiClient
 
 import fetch_only_pickup as fetch
 import fiducial_follow as follow
