@@ -216,17 +216,8 @@ class FollowFiducial(object):
             
             # print(board_properties.transforms_snapshot.child_to_parent_edge_map['vision'].parent_tform_child.rotation)
         print(board_properties)
-            # self.command_robot_to_angle(self._angle_desired)
         return
     
-    def command_robot_to_angle(self, angle):
-        """Command the robot to turn to the desired angle."""
-        current_position = get_vision_tform_body(self.robot_state.kinematic_state.transforms_snapshot)
-        
-        mobility_params = self.set_mobility_params()
-        rotate_cmd = RobotCommandBuilder.synchro_se2_trajectory_point_command(goal_x=current_position.x, goal_y=current_position.y, goal_heading=angle, frame_name=VISION_FRAME_NAME, params=mobility_params, body_height=0.0, locomotion_hint=spot_command_pb2.HINT_AUTO)
-        
-        self._robot_command_client.robot_command(lease=None, command=rotate_cmd)
 
     def final_state(self):
         """Check if the current robot state is within range of the fiducial position."""
@@ -254,8 +245,8 @@ class FollowFiducial(object):
         # x hat is the vector from the robot to the fiducial
         # we need to adjust y hat for spot to align with fiducial
         
-        yhat = np.cross(zhat, xhat)
-        # yhat = np.cross(zhat, fhat)
+        # yhat = np.cross(zhat, xhat)
+        yhat = np.cross(zhat, fhat) # Rotates to the fiducial
         mat = np.array([fhat, yhat, zhat]).transpose()
         return Quat.from_matrix(mat).to_yaw()
         
