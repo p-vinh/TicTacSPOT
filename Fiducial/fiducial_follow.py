@@ -144,6 +144,7 @@ class FollowFiducial(object):
         return version_tuple(robot_id.software_release.version) >= (1, 2, 0)
 
     def start(self):
+        global board_properties
         #Claim lease of robot and start the fiducial follower.
         self._robot.time_sync.wait_for_sync()
 
@@ -161,7 +162,7 @@ class FollowFiducial(object):
                     if vision_tform_fiducial is not None:
                         detected_fiducial = True
                         fiducial_rt_world = vision_tform_fiducial.position
-            
+                        board_properties = vision_tform_fiducial
             if detected_fiducial:
                 self.go_to_tag(fiducial_rt_world)
                 break
@@ -175,7 +176,6 @@ class FollowFiducial(object):
     def get_fiducial_objects(self):
         """Get all fiducials that Spot detects with its perception system."""
         # Get all fiducial objects (an object of a specific type).
-        global board_properties
         
         request_fiducials = [world_object_pb2.WORLD_OBJECT_APRILTAG]
         fiducial_objects = self._world_object_client.list_world_objects(
@@ -184,7 +184,6 @@ class FollowFiducial(object):
             # Return all fiducial objects it sees
             for fiducial in fiducial_objects:
                 if fiducial.apriltag_properties.tag_id == ref_point:
-                    board_properties = fiducial # Set the rt world object
                     return fiducial
         
         # Return none if no fiducials are found.
@@ -215,7 +214,8 @@ class FollowFiducial(object):
                 time.sleep(.25)
                 current_time = time.time()
             
-            # print(board_properties.transforms_snapshot.child_to_parent_edge_map['fiducial_535'].parent_tform_child)
+            # print(board_properties.transforms_snapshot.child_to_parent_edge_map['vision'].parent_tform_child.rotation)
+        print(board_properties)
             # self.command_robot_to_angle(self._angle_desired)
         return
     
@@ -240,11 +240,23 @@ class FollowFiducial(object):
                 return True
         return False
 
+    def get_fiducial_orientation(self):
+        rotations = board_properties.rotation
+        yaw = Quat(rotations.w, rotations.x, rotations.y, rotations.z).to_yaw()
+        fhat = [np.cos(yaw), np.sin(yaw), 0]
+
+        return fhat
+
     def get_desired_angle(self, xhat):
         """Compute heading based on the vector from robot to object."""
         zhat = [0.0, 0.0, 1.0]
+        fhat = self.get_fiducial_orientation()
+        # x hat is the vector from the robot to the fiducial
+        # we need to adjust y hat for spot to align with fiducial
+        
         yhat = np.cross(zhat, xhat)
-        mat = np.array([xhat, yhat, zhat]).transpose()
+        # yhat = np.cross(zhat, fhat)
+        mat = np.array([fhat, yhat, zhat]).transpose()
         return Quat.from_matrix(mat).to_yaw()
         
     def offset_tag_pose(self, object_rt_world, dist_margin=1.0):
@@ -259,10 +271,18 @@ class FollowFiducial(object):
             object_rt_world.x - robot_to_object_ewrt_world_norm[0] * dist_margin,
             object_rt_world.y - robot_to_object_ewrt_world_norm[1] * dist_margin
         ])
+        
+        print("Robot To Object: ", robot_to_object_ewrt_world_norm)
+        print("Goto RT World: ", goto_rt_world)
+        print("Heading: ", heading)
+        
         return goto_rt_world, heading
     
     def backup_from_reference(self, distance=1.0):
         """Backup the robot from the reference point by a specified distance."""
+        
+        # NOTE: In order for spot to back up from the fiducial, the robot_to_object_ewrt_world_norm[0] * dist_margin in offset_tag_pose needs to be greater than object_rt_world
+        # for the position to be negative. Otherwise, it will continue walking into the wall.
         self._current_tag_world_pose, self._angle_desired = self.offset_tag_pose(board_properties, distance)
         
         mobility_params = self.set_mobility_params()
@@ -410,8 +430,8 @@ if __name__ == "__main__":
                                             'such as the estop SDK example, to configure E-Stop.'
             fiducial_follower.start()
             
-            print("Backing up from Reference Point")
-            fiducial_follower.backup_from_reference(3)
+            # print("Backing up from Reference Point")
+            # fiducial_follower.backup_from_reference(2)
             
             
     except RpcError as err:
