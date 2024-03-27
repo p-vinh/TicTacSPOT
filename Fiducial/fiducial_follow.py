@@ -231,6 +231,7 @@ class FollowFiducial(object):
                 return True
         return False
 
+    # This may not be needed. If we are calculating the angle through the vector
     def get_fiducial_orientation(self):
         rotations = board_properties.rotation
         yaw = Quat(rotations.w, rotations.x, rotations.y, rotations.z).to_yaw()
@@ -238,16 +239,14 @@ class FollowFiducial(object):
 
         return fhat
 
-    def get_desired_angle(self, xhat):
+    def get_desired_angle(self, vhat):
         """Compute heading based on the vector from robot to object."""
-        zhat = [0.0, 0.0, 1.0]
-        fhat = self.get_fiducial_orientation()
-        # x hat is the vector from the robot to the fiducial
-        # we need to adjust y hat for spot to align with fiducial
         
-        # yhat = np.cross(zhat, xhat)
-        yhat = np.cross(zhat, fhat) # Rotates to the fiducial
-        mat = np.array([fhat, yhat, zhat]).transpose()
+        # return np.arctan2(vhat[1], vhat[0])
+        zhat = [0.0, 0.0, 1.0]
+        
+        yhat = np.cross(zhat, vhat) # Gets the cross product based on the given vector
+        mat = np.array([vhat, yhat, zhat]).transpose()
         return Quat.from_matrix(mat).to_yaw()
         
     def offset_tag_pose(self, object_rt_world, dist_margin=1.0):
@@ -257,11 +256,16 @@ class FollowFiducial(object):
             [object_rt_world.x - robot_rt_world.x, object_rt_world.y - robot_rt_world.y, 0])
         robot_to_object_ewrt_world_norm = robot_to_object_ewrt_world / np.linalg.norm(
             robot_to_object_ewrt_world)
+        
         heading = self.get_desired_angle(robot_to_object_ewrt_world_norm)
+        
+        
+        # Does ont work with all cardinal directions. It will only work if it is 3.14 rad - 0rad (0 - 180 degrees)
         goto_rt_world = np.array([
-            object_rt_world.x - robot_to_object_ewrt_world_norm[0] * dist_margin,
-            object_rt_world.y - robot_to_object_ewrt_world_norm[1] * dist_margin
+            object_rt_world.x - np.cos(heading) * dist_margin,
+            object_rt_world.y - np.sin(heading) * dist_margin
         ])
+        
         
         print("Robot To Object: ", robot_to_object_ewrt_world_norm)
         print("Goto RT World: ", goto_rt_world)
@@ -269,12 +273,12 @@ class FollowFiducial(object):
         
         return goto_rt_world, heading
     
-    def backup_from_reference(self, distance=1.0):
+    def backup_from_reference(self, distance=2.0):
         """Backup the robot from the reference point by a specified distance."""
         
         # NOTE: In order for spot to back up from the fiducial, the robot_to_object_ewrt_world_norm[0] * dist_margin in offset_tag_pose needs to be greater than object_rt_world
         # for the position to be negative. Otherwise, it will continue walking into the wall.
-        self._current_tag_world_pose, self._angle_desired = self.offset_tag_pose(board_properties, distance)
+        self._current_tag_world_pose, self._angle_desired = self.offset_tag_pose(board_properties.position, distance)
         
         mobility_params = self.set_mobility_params()
         tag_cmd = RobotCommandBuilder.synchro_se2_trajectory_point_command(
@@ -369,7 +373,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     bosdyn.client.util.add_base_arguments(parser)
-    parser.add_argument('--distance-margin', default=.5,
+    parser.add_argument('--distance-margin', default=1,
                         help='Distance [meters] that the robot should stop from the fiducial.')
     parser.add_argument('--limit-speed', default=True, type=lambda x: (str(x).lower() == 'true'),
                         help='If the robot should limit its maximum speed.')
@@ -420,7 +424,6 @@ if __name__ == "__main__":
                                             'Please use an external E-Stop client, ' \
                                             'such as the estop SDK example, to configure E-Stop.'
             fiducial_follower.start()
-            
             # print("Backing up from Reference Point")
             # fiducial_follower.backup_from_reference(2)
             
