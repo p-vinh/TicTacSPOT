@@ -281,7 +281,6 @@ def pick_up(options, robot):
                 # Send a request for feedback
                 response = manipulation_api_client.manipulation_api_feedback_command(
                     manipulation_api_feedback_request=feedback_request)
-
                 current_state = response.current_state
                 current_time = time.time() - time_start
                 print(
@@ -303,7 +302,16 @@ def pick_up(options, robot):
 
                 time.sleep(0.5)
 
-            holding_piece = not failed
+            if current_state == manipulation_api_pb2.MANIP_STATE_GRASP_SUCCEEDED:
+                print(robot_state_client.get_robot_state().manipulator_state.gripper_open_percentage)
+                gripper_degree = robot_state_client.get_robot_state().manipulator_state.gripper_open_percentage
+                
+                if gripper_degree <= 0.0:
+                    holding_piece = False
+                else:
+                    holding_piece = not failed
+            else:
+                holding_piece = not failed
 
         time.sleep(2)
         # Move the arm to a carry position.

@@ -111,6 +111,10 @@ def joint_move_example(robot, move, id, command_client):
         stow = RobotCommandBuilder.arm_stow_command()
         block_until_arm_arrives(command_client, command_client.robot_command(stow), 3.0)
         
+        gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(0.0)
+        command = RobotCommandBuilder.build_synchro_command(gripper_command)
+        command_client.robot_command(command)
+        
         return True
     except Exception as exc:  # pylint: disable=broad-except
         logger = bosdyn.client.util.get_logger()

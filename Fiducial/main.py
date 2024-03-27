@@ -249,7 +249,7 @@ def main():
         
         # 4. Set up Position
         print("Placing Piece....")
-        class_obj = follow.fiducial_follow(robot, options, BOARD_REF)
+        class_obj = follow.fiducial_follow(robot, options, 535)
         
         
         # 5. Place Piece

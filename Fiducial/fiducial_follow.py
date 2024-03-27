@@ -242,21 +242,23 @@ class FollowFiducial(object):
 
     def get_desired_angle(self, vhat):
         """Compute heading based on the vector from robot to object."""
-        zhat = [0.0, 0.0, 1.0]
+        # zhat = [0.0, 0.0, 1.0]
     
-        yhat = np.cross(zhat, vhat) # Gets the cross product based on the given vector
-        mat = np.array([vhat, yhat, zhat]).transpose()
-        return Quat.from_matrix(mat).to_yaw()
+        # yhat = np.cross(zhat, vhat) # Gets the cross product based on the given vector
+        # mat = np.array([vhat, yhat, zhat]).transpose()
+        # return Quat.from_matrix(mat).to_yaw()
 
         # Returns the angle between the robot and the object in radians
-        # return np.arctan2(vhat[1], vhat[0])
+        return np.arctan2(vhat[1], vhat[0])
         
     def offset_tag_pose(self, object_rt_world, dist_margin=1.0):
         """Offset the go-to location of the fiducial and compute the desired heading."""
         robot_rt_world = get_vision_tform_body(self.robot_state.kinematic_state.transforms_snapshot)
 
         robot_to_object_ewrt_world = np.array(
-            [object_rt_world.x - robot_rt_world.x, object_rt_world.y - robot_rt_world.y, object_rt_world.z - robot_rt_world.z])
+            [object_rt_world.x - robot_rt_world.x,
+             object_rt_world.y - robot_rt_world.y,
+             object_rt_world.z - robot_rt_world.z])
         
 
         if np.linalg.norm(robot_to_object_ewrt_world) < 0.01:
@@ -266,12 +268,12 @@ class FollowFiducial(object):
             robot_to_object_ewrt_world)
         
         # Pointing from the object to the robot) and Z straight up
-        heading = self.get_desired_angle(self.get_fiducial_orientation())
+        heading = self.get_desired_angle(robot_to_object_ewrt_world_norm)
         
         
         goto_rt_world = np.array([
             object_rt_world.x - np.cos(heading) * dist_margin,
-            object_rt_world.y + np.sin(heading) * dist_margin,
+            object_rt_world.y - np.sin(heading) * dist_margin,
             object_rt_world.z - robot_to_object_ewrt_world_norm[2]
         ])
         
