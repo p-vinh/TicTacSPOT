@@ -176,6 +176,7 @@ def main():
     lease_client = robot.ensure_client(LeaseClient.default_service_name)
     _world_object_client = robot.ensure_client(WorldObjectClient.default_service_name)
     
+    lease_client.take()
     # ===============================Get Lease===========================================
     with bosdyn.client.lease.LeaseKeepAlive(lease_client, must_acquire=True, return_at_exit=True):
         
@@ -248,16 +249,14 @@ def main():
         
         # 4. Set up Position
         print("Placing Piece....")
-        placing = follow.fiducial_follow(robot, options, BOARD_REF)
+        class_obj = follow.fiducial_follow(robot, options, BOARD_REF)
         
-        if not placing:
-            LOGGER.error('Failed to place piece')
         
         # 5. Place Piece
         place.place_piece(robot, move, id)
         
         # 6. Backup From Reference Point
-        follow.backup_from_reference(5) # Backup 5 meters from reference point
+        class_obj.backup_from_reference(2) # Backup 5 meters from reference point
         
         
         # 7. Gameover?

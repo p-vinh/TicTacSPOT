@@ -80,27 +80,32 @@ def joint_move_example(robot, move, id, command_client):
     
     try:
         if move[0] == 2:
-             bottomRow(robot, command_client)
+            cmd_id = bottomRow(robot, command_client)
         elif move[0] == 1:
-             middleRow(robot, command_client)
+            cmd_id = middleRow(robot, command_client)
             #  stow(robot,command_client)
         elif move[0] == 0:
-             topRow(robot, command_client)
+            cmd_id = topRow(robot, command_client)
         else:
              print("cannot do this....")
         
         # Make the open gripper RobotCommand
-        gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(1.0)
+        # gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(0.0)
         
         # Combine the arm and gripper commands into one RobotCommand
-        command = RobotCommandBuilder.build_synchro_command(gripper_command, gripper_command)
-        
+        # command = RobotCommandBuilder.build_synchro_command(gripper_command, gripper_command)
         # Send the request
-        cmd_id = command_client.robot_command(command)
+        # cmd_id = command_client.robot_command(command)
         
         # Wait until the arm arrives at the goal.
-        block_until_arm_arrives_with_prints(robot, command_client, cmd_id)
+        # block_until_arm_arrives_with_prints(robot, command_client, cmd_id)
+        block_until_arm_arrives(command_client, cmd_id, 5.0)
         
+        time.sleep(2)
+        
+        gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(0.8)
+        command = RobotCommandBuilder.build_synchro_command(gripper_command)
+        command_client.robot_command(command)
         #Stow
         print('Carrying Finished, Stowing...')
         stow = RobotCommandBuilder.arm_stow_command()
@@ -144,7 +149,7 @@ def bottomRow(robot, command_client):
 
         # time.sleep(3)
         print('BOTTOM ROW')
-        
+        return cmd_id
         #RETURN CMD_ID
         
 def middleRow(robot, command_client):
@@ -178,6 +183,8 @@ def middleRow(robot, command_client):
 
         time.sleep(3)
         print('MIDDLE ROW')
+        return cmd_id
+        
 def topRow(robot,command_client):
         # Example 2: Single point trajectory with maximum acceleration/velocity constraints specified such
         # that the solver has to modify the desired points to honor the constraints
@@ -212,6 +219,8 @@ def topRow(robot,command_client):
 
         # time.sleep(3)
         print('TOP ROW')
+        return cmd_id
+        
 def stow(robot, command_client):
         # Example 3: Single point trajectory with default acceleration/velocity constraints and
         # time_since_reference_secs large enough such that the solver can plan a solution to the

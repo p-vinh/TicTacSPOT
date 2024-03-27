@@ -12,6 +12,7 @@ from sys import platform
 import numpy as np
 
 import bosdyn.client
+from bosdyn.client import frame_helpers, math_helpers
 import bosdyn.client.util
 from bosdyn import geometry
 from bosdyn.api import geometry_pb2, image_pb2, trajectory_pb2, world_object_pb2
@@ -24,7 +25,7 @@ from bosdyn.client.image import ImageClient
 from bosdyn.client.lease import LeaseClient
 from bosdyn.client.math_helpers import Quat
 from bosdyn.client.power import PowerClient
-from bosdyn.client.robot_command import RobotCommandBuilder, RobotCommandClient, blocking_stand
+from bosdyn.client.robot_command import RobotCommandBuilder, RobotCommandClient, blocking_stand, block_for_trajectory_cmd
 from bosdyn.client.robot_id import RobotIdClient, version_tuple
 from bosdyn.client.robot_state import RobotStateClient
 from bosdyn.client.world_object import WorldObjectClient
@@ -195,13 +196,13 @@ class FollowFiducial(object):
         # this point.
         self._current_tag_world_pose, self._angle_desired = self.offset_tag_pose(
             fiducial_rt_world, self._tag_offset)
-                
+        
         #Command the robot to go to the tag in kinematic odometry frame
         mobility_params = self.set_mobility_params()
         tag_cmd = RobotCommandBuilder.synchro_se2_trajectory_point_command(
             goal_x=self._current_tag_world_pose[0], goal_y=self._current_tag_world_pose[1],
             goal_heading=self._angle_desired, frame_name=VISION_FRAME_NAME, params=mobility_params,
-            body_height=0.0, locomotion_hint=spot_command_pb2.HINT_AUTO)
+            body_height=self._current_tag_world_pose[2], locomotion_hint=spot_command_pb2.HINT_AUTO)
         end_time = 5.0
         if self._movement_on:
             #Issue the command to the robot
@@ -241,10 +242,8 @@ class FollowFiducial(object):
 
     def get_desired_angle(self, vhat):
         """Compute heading based on the vector from robot to object."""
-        
-        # return np.arctan2(vhat[1], vhat[0])
         zhat = [0.0, 0.0, 1.0]
-        
+    
         yhat = np.cross(zhat, vhat) # Gets the cross product based on the given vector
         mat = np.array([vhat, yhat, zhat]).transpose()
         return Quat.from_matrix(mat).to_yaw()
@@ -255,21 +254,28 @@ class FollowFiducial(object):
     def offset_tag_pose(self, object_rt_world, dist_margin=1.0):
         """Offset the go-to location of the fiducial and compute the desired heading."""
         robot_rt_world = get_vision_tform_body(self.robot_state.kinematic_state.transforms_snapshot)
+
         robot_to_object_ewrt_world = np.array(
-            [object_rt_world.x - robot_rt_world.x, object_rt_world.y - robot_rt_world.y, 0])
-        robot_to_object_ewrt_world_norm = robot_to_object_ewrt_world / np.linalg.norm(
+            [object_rt_world.x - robot_rt_world.x, object_rt_world.y - robot_rt_world.y, object_rt_world.z - robot_rt_world.z])
+        
+
+        if np.linalg.norm(robot_to_object_ewrt_world) < 0.01:
+            robot_to_object_ewrt_world_norm = robot_rt_world.transform_point(1, 0, 0)
+        else:
+            robot_to_object_ewrt_world_norm = robot_to_object_ewrt_world / np.linalg.norm(
             robot_to_object_ewrt_world)
         
-        heading = self.get_desired_angle(robot_to_object_ewrt_world_norm)
+        # Pointing from the object to the robot) and Z straight up
+        heading = self.get_desired_angle(self.get_fiducial_orientation())
         
         
-        # Does ont work with all cardinal directions. It will only work if it is 3.14 rad - 0rad (0 - 180 degrees)
         goto_rt_world = np.array([
             object_rt_world.x - np.cos(heading) * dist_margin,
-            object_rt_world.y - np.sin(heading) * dist_margin
+            object_rt_world.y + np.sin(heading) * dist_margin,
+            object_rt_world.z - robot_to_object_ewrt_world_norm[2]
         ])
         
-        
+        print("Object Position: ", object_rt_world)
         print("Robot To Object: ", robot_to_object_ewrt_world_norm)
         print("Goto RT World: ", goto_rt_world)
         print("Heading: ", heading)
@@ -346,11 +352,9 @@ class FollowFiducial(object):
 
 def fiducial_follow(robot, options, board_ref):
     global ref_point
-    global board_properties
     
     ref_point = board_ref
-    fiducial_follower = None
-        
+    
     try:
         # Verify the robot is not estopped.
         assert not robot.is_estopped(), 'Robot is estopped. ' \
@@ -361,7 +365,9 @@ def fiducial_follow(robot, options, board_ref):
         time.sleep(.1)
         
         print('SPOT Walking to Board')
-        return fiducial_follower.start()
+        fiducial_follower.start()
+        
+        return fiducial_follower
     except RpcError as err:
         LOGGER.error('Failed to communicate with robot: %s', err)
 
@@ -371,12 +377,11 @@ def fiducial_follow(robot, options, board_ref):
 if __name__ == "__main__":    
     load_dotenv()
     ref_point = 535
-    fiducial_follower = None
     import argparse
 
     parser = argparse.ArgumentParser()
     bosdyn.client.util.add_base_arguments(parser)
-    parser.add_argument('--distance-margin', default=1,
+    parser.add_argument('--distance-margin', default=0.1,
                         help='Distance [meters] that the robot should stop from the fiducial.')
     parser.add_argument('--limit-speed', default=True, type=lambda x: (str(x).lower() == 'true'),
                         help='If the robot should limit its maximum speed.')
