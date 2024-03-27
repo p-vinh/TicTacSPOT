@@ -248,6 +248,9 @@ class FollowFiducial(object):
         yhat = np.cross(zhat, vhat) # Gets the cross product based on the given vector
         mat = np.array([vhat, yhat, zhat]).transpose()
         return Quat.from_matrix(mat).to_yaw()
+
+        # Returns the angle between the robot and the object in radians
+        # return np.arctan2(vhat[1], vhat[0])
         
     def offset_tag_pose(self, object_rt_world, dist_margin=1.0):
         """Offset the go-to location of the fiducial and compute the desired heading."""
