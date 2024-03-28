@@ -15,14 +15,18 @@ import bosdyn.api.gripper_command_pb2
 import bosdyn.client
 import bosdyn.client.lease
 import bosdyn.client.util
-from bosdyn.api import arm_command_pb2, robot_command_pb2, synchronized_command_pb2, trajectory_pb2, world_object_pb2
+from bosdyn.api import arm_command_pb2, robot_command_pb2, synchronized_command_pb2, trajectory_pb2, world_object_pb2, geometry_pb2
 from bosdyn.client import math_helpers
+from bosdyn.client.math_helpers import Quat
 from bosdyn.client.frame_helpers import GRAV_ALIGNED_BODY_FRAME_NAME
 from bosdyn.client.robot_command import RobotCommandBuilder, RobotCommandClient, blocking_stand
 from bosdyn.util import seconds_to_duration
 from bosdyn.client.frame_helpers import (BODY_FRAME_NAME, VISION_FRAME_NAME, get_a_tform_b,
                                          get_vision_tform_body)
 from bosdyn.client.world_object import WorldObjectClient
+from bosdyn.client.robot_state import RobotStateClient
+
+import numpy as np
 from dotenv import load_dotenv
 
 def arm_trajectory(config):
@@ -86,59 +90,23 @@ def arm_trajectory(config):
             if vision_tform_fiducial is not None:
                 fiducial_rt_world = vision_tform_fiducial.position
 
-        # Move the arm along a simple trajectory.
+        robot_state = robot.ensure_client(RobotStateClient.default_service_name)
 
-        # x = 0.75  # a reasonable position in front of the robot
-        # y1 = 0  # centered
-        # y2 = 0.4  # 0.4 meters to the robot's left
-        # y3 = -0.4  # 0.4 meters to the robot's right
-        # z = 0  # at the body's height
-
-        # Use the same rotation as the robot's body.
-        rotation = math_helpers.Quat()
-
+    
         # Define times (in seconds) for each point in the trajectory.
-        t_first_point = 8.0  # first point starts at t = 0 for the trajectory.
-        # t_second_point = 4.0
-        # t_third_point = 8.0
+        t_first_point = 4.0  # first point starts at t = 0 for the trajectory.
         print(fiducial_rt_world)
+        rotation = math_helpers.Quat()
         # Build the points in the trajectory.
-        hand_pose1 = math_helpers.SE3Pose(x=fiducial_rt_world.x, y=fiducial_rt_world.y, z=fiducial_rt_world.z, rot=rotation)
-        # hand_pose2 = math_helpers.SE3Pose(x=x, y=y2, z=z, rot=rotation)
-        # hand_pose3 = math_helpers.SE3Pose(x=x, y=y3, z=z, rot=rotation)
-
-        # Build the points by combining the pose and times into protos.
-        traj_point1 = trajectory_pb2.SE3TrajectoryPoint(
-            pose=hand_pose1, time_since_reference=seconds_to_duration(t_first_point))
-        # traj_point2 = trajectory_pb2.SE3TrajectoryPoint(
-        #     pose=hand_pose2.to_proto(), time_since_reference=seconds_to_duration(t_second_point))
-        # traj_point3 = trajectory_pb2.SE3TrajectoryPoint(
-        #     pose=hand_pose3.to_proto(), time_since_reference=seconds_to_duration(t_third_point))
-
-        # Build the trajectory proto by combining the points.
-        hand_traj = trajectory_pb2.SE3Trajectory(points=[traj_point1])
-
-        # Build the command by taking the trajectory and specifying the frame it is expressed
-        # in.
-        #
-        # In this case, we want to specify the trajectory in the body's frame, so we set the
-        # root frame name to the flat body frame.
-        arm_cartesian_command = arm_command_pb2.ArmCartesianCommand.Request(
-            pose_trajectory_in_task=hand_traj, root_frame_name=GRAV_ALIGNED_BODY_FRAME_NAME)
-
-        # Pack everything up in protos.
-        arm_command = arm_command_pb2.ArmCommand.Request(
-            arm_cartesian_command=arm_cartesian_command)
-
-        synchronized_command = synchronized_command_pb2.SynchronizedCommand.Request(
-            arm_command=arm_command)
-
-        robot_command = robot_command_pb2.RobotCommand(synchronized_command=synchronized_command)
-
-        # Keep the gripper closed the whole time.
-        robot_command = RobotCommandBuilder.claw_gripper_open_fraction_command(
-            0, build_on_command=robot_command)
-
+        
+        pose = math_helpers.SE3Pose(x=0, y=0, z=0, rot=rotation)
+        point = trajectory_pb2.SE3TrajectoryPoint(pose=pose.to_proto(), time_since_reference=seconds_to_duration(t_first_point))
+        trajectory = trajectory_pb2.SE3Trajectory(points=[point])
+        arm_command = arm_command_pb2.ArmCommand.Request(arm_command=trajectory)
+        synchro_group = synchronized_command_pb2.SynchronizedCommand.Request(arm_command=arm_command)
+        robot_command = robot_command_pb2.RobotCommand(synchronized_command=synchro_group)
+        
+        
         robot.logger.info('Sending trajectory command...')
 
         # Send the trajectory to the robot.
@@ -149,8 +117,8 @@ def arm_trajectory(config):
             feedback_resp = command_client.robot_command_feedback(cmd_id)
             measured_pos_distance_to_goal = feedback_resp.feedback.synchronized_feedback.arm_command_feedback.arm_cartesian_feedback.measured_pos_distance_to_goal
             measured_rot_distance_to_goal = feedback_resp.feedback.synchronized_feedback.arm_command_feedback.arm_cartesian_feedback.measured_rot_distance_to_goal
-            robot.logger.info('Distance to go: %.2f meters, %.2f radians',
-                              measured_pos_distance_to_goal, measured_rot_distance_to_goal)
+            # robot.logger.info('Distance to go: %.2f meters, %.2f radians',
+            #                   measured_pos_distance_to_goal, measured_rot_distance_to_goal)
 
             if feedback_resp.feedback.synchronized_feedback.arm_command_feedback.arm_cartesian_feedback.status == arm_command_pb2.ArmCartesianCommand.Feedback.STATUS_TRAJECTORY_COMPLETE:
                 robot.logger.info('Move complete.')
