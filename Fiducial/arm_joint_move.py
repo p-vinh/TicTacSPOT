@@ -72,22 +72,22 @@ def block_until_arm_arrives_with_prints(robot, command_client, cmd_id):
             break
         time.sleep(0.1)
 
-def joint_move_example(robot, move, id, command_client):
+def joint_move_example(robot, movePos, command_client):
     """A simple example of using the Boston Dynamics API to command Spot's arm to perform joint moves."""
     # parser = argparse.ArgmentParser()
     # bosdyn.client.util.add_base_arguments(parser)
     # options = parser.parse_arg()
     
     try:
-        if move[0] == 2:
-            cmd_id = bottomRow(robot, command_client)
-        elif move[0] == 1:
-            cmd_id = middleRow(robot, command_client)
-            #  stow(robot,command_client)
-        elif move[0] == 0:
-            cmd_id = topRow(robot, command_client)
-        else:
-             print("cannot do this....")
+        # if move[0] == 2:
+        #     cmd_id = bottomRow(robot, command_client)
+        # elif move[0] == 1:
+        #     cmd_id = middleRow(robot, command_client)
+        #     #  stow(robot,command_client)
+        # elif move[0] == 0:
+        #     cmd_id = topRow(robot, command_client)
+        # else:
+        #      print("cannot do this....")
         
         # Make the open gripper RobotCommand
         # gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(0.0)
@@ -99,12 +99,43 @@ def joint_move_example(robot, move, id, command_client):
         
         # Wait until the arm arrives at the goal.
         # block_until_arm_arrives_with_prints(robot, command_client, cmd_id)
-        block_until_arm_arrives(command_client, cmd_id, 5.0)
+        # block_until_arm_arrives(command_client, cmd_id, 5.0)
         
-        time.sleep(2)
+        # time.sleep(2)
+          # Do an arm-move to gently put the object down.
+            # Build a position to move the arm to (in meters, relative to and expressed in the gravity aligned body frame).
+        # x = 0.75
+        # y = 0
+        # z = -0.25
+        # hand_ewrt_flat_body = geometry_pb2.Vec3(x=x, y=y, z=z)
+        #  # Point the hand straight down with a quaternion.
+        # qw = 0.707
+        # qx = 0
+        # qy = 0.707
+        # qz = 0
+        # flat_body_Q_hand = geometry_pb2.Quaternion(w=qw, x=qx, y=qy, z=qz)
+        # flat_body_tform_hand = geometry_pb2.SE3Pose(position=hand_ewrt_flat_body,
+        #                                                 rotation=flat_body_Q_hand)
+
+        # robot_state = robot_state_client.get_robot_state()
+            
+        # vision_tform_flat_body = frame_helpers.get_a_tform_b(
+        #         robot_state.kinematic_state.transforms_snapshot, frame_helpers.VISION_FRAME_NAME,
+        #         frame_helpers.GRAV_ALIGNED_BODY_FRAME_NAME)
         
-        gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(0.8)
-        command = RobotCommandBuilder.build_synchro_command(gripper_command)
+        # vision_tform_hand_at_drop = vision_tform_flat_body * math_helpers.SE3Pose.from_proto(
+        #         flat_body_tform_hand)
+
+        
+        # arm_command = RobotCommandBuilder.arm_pose_command(
+        #         vision_tform_hand_at_drop.x, vision_tform_hand_at_drop.y,
+        #         vision_tform_hand_at_drop.z, vision_tform_hand_at_drop.rot.w,
+        #         vision_tform_hand_at_drop.rot.x, vision_tform_hand_at_drop.rot.y,
+        #         vision_tform_hand_at_drop.rot.z, frame_helpers.VISION_FRAME_NAME, seconds)
+
+        
+        gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(22.0)
+        command = RobotCommandBuilder.build_synchro_command(gripper_command) #still need to include arm_command
         command_client.robot_command(command)
         #Stow
         print('Carrying Finished, Stowing...')
@@ -271,10 +302,10 @@ def stow(robot, command_client):
         print("done")
 
 
-def place_piece(robot, move, id):
+def place_piece(robot, movePos):
     robot.time_sync.wait_for_sync()
     command_client = robot.ensure_client(RobotCommandClient.default_service_name)
-    joint_move_example(robot, move, id, command_client)
+    joint_move_example(robot, movePos, command_client)
     
     
 # Testing function

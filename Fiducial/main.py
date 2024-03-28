@@ -8,9 +8,9 @@ import time
 import bosdyn.client
 import bosdyn.client.util
 import bosdyn.geometry
-from bosdyn.api import geometry_pb2, image_pb2, trajectory_pb2, world_object_pb2, estop_pb2
-from bosdyn.api.geometry_pb2 import SE2Velocity, SE2VelocityLimit, Vec2
-from bosdyn.api.spot import robot_command_pb2 as spot_command_pb2
+from bosdyn.api import world_object_pb2, estop_pb2
+from bosdyn.client.frame_helpers import (BODY_FRAME_NAME, VISION_FRAME_NAME, get_a_tform_b,
+                                         get_vision_tform_body)
 from bosdyn.client.lease import LeaseClient
 from bosdyn.client.robot_command import RobotCommandBuilder, RobotCommandClient, blocking_stand
 from bosdyn.client.robot_id import version_tuple
@@ -107,7 +107,8 @@ def find_fiducials():
             # Find fiducials id
             for fiducial in fiducial_objects:
                 if(fiducial.apriltag_properties.tag_id != BOARD_REF): #Ignore fiducial id that represents the board
-                    ids.add(fiducial.apriltag_properties.tag_id)
+                    # ID | World Position
+                    ids.add(tuple(fiducial.apriltag_properties.tag_id, get_a_tform_b(fiducial.transforms_snapshot, VISION_FRAME_NAME, fiducial.apriltag_properties.frame_name_fiducial).to_proto()))
             #IMPORTANT, it sorts the list of IDS in order
             sorted_list = list(ids)
             sorted_list.sort()
@@ -149,7 +150,7 @@ def main():
     parser.add_argument('-c', '--confidence-piece',
                         help='Minimum confidence to return an object for the dogoy (0.0 to 1.0)',
                         default=0.5, type=float)
-    parser.add_argument('-d', '--distance-margin', default=.5,
+    parser.add_argument('-d', '--distance-margin', default=0.6,
                         help='Distance [meters] that the robot should stop from the fiducial.')
     parser.add_argument('--limit-speed', default=True, type=lambda x: (str(x).lower() == 'true'),
                         help='If the robot should limit its maximum speed.')
@@ -216,7 +217,9 @@ def main():
 
         #1. Find Fidicials and Update Board ----> Player move
         #Have Spot twist up to see all fiducials        
-        setOfIds = detectFiducial(expectedNumberOfFiducials, -0.2)
+        idpos = detectFiducial(expectedNumberOfFiducials, -0.2)
+        print(idpos)
+        setOfIds = sorted([ids[0] for ids in idpos])
         print(setOfIds)
         board.updateBoard(setOfIds, player)
         
@@ -238,9 +241,7 @@ def main():
         time.sleep(3)
         
         #2. Minimax
-        #move, id = ttt.minimax(board.getBoardState())
-        move = (2,0)
-        print(move, id)
+        move, id = ttt.minimax(board.getBoardState())
         
         #3. Pick Piece
         robot.logger.info('Sending Robot Pickup Request')
@@ -251,12 +252,15 @@ def main():
         print("Placing Piece....")
         class_obj = follow.fiducial_follow(robot, options, 535)
         
-        
+        movePos = [ids[1] for ids in idpos if ids[0] == id]
+        # We want to tilt until we see the whole board:
+        detectFiducial(expectedNumberOfFiducials, -0.2)
+        print(movePos)
         # 5. Place Piece
-        place.place_piece(robot, move, id)
+        place.place_piece(robot, movePos)
         
         # 6. Backup From Reference Point
-        class_obj.backup_from_reference(2) # Backup 5 meters from reference point
+        # class_obj.backup_from_reference(2) # Backup 5 meters from reference point
         
         
         # 7. Gameover?

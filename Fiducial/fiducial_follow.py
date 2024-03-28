@@ -277,10 +277,10 @@ class FollowFiducial(object):
             object_rt_world.z - robot_to_object_ewrt_world_norm[2]
         ])
         
-        print("Object Position: ", object_rt_world)
-        print("Robot To Object: ", robot_to_object_ewrt_world_norm)
-        print("Goto RT World: ", goto_rt_world)
-        print("Heading: ", heading)
+        # print("Object Position: ", object_rt_world)
+        # print("Robot To Object: ", robot_to_object_ewrt_world_norm)
+        # print("Goto RT World: ", goto_rt_world)
+        # print("Heading: ", heading)
         
         return goto_rt_world, heading
     

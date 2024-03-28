@@ -305,14 +305,18 @@ def pick_up(options, robot):
             if current_state == manipulation_api_pb2.MANIP_STATE_GRASP_SUCCEEDED:
                 print(robot_state_client.get_robot_state().manipulator_state.gripper_open_percentage)
                 gripper_degree = robot_state_client.get_robot_state().manipulator_state.gripper_open_percentage
-                
+                print("Gripper Degree Percentage:", gripper_degree)
+                #checks to be sure gripper degree is not equal or less than 0
                 if gripper_degree <= 0.0:
                     holding_piece = False
+                    print("Failed to grab")
                 else:
-                    holding_piece = not failed
+                    holding_piece = not failed       
             else:
                 holding_piece = not failed
+                
 
+            
         time.sleep(2)
         # Move the arm to a carry position.
         grasp_holding_override = manipulation_api_pb2.ApiGraspOverride(
