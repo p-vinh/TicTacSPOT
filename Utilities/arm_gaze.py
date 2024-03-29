@@ -112,7 +112,6 @@ def gaze_control(config):
         # Look at a point 3 meters in front and 4 meters to the left.
         # We are not specifying a hand location, the robot will pick one.
         rotation = math_helpers.Quat()
-
         gaze_command = RobotCommandBuilder.arm_pose_command(fiducial_rt_world.x,
                                                             fiducial_rt_world.y,
                                                             fiducial_rt_world.z, 
@@ -131,7 +130,7 @@ def gaze_control(config):
         robot.logger.info('Requesting gaze.')
         gaze_command_id = command_client.robot_command(synchro_command)
 
-        block_until_arm_arrives(command_client, gaze_command_id, 4.0)
+        block_until_arm_arrives(command_client, gaze_command_id, 10.0)
         
 
         # Look to the left and the right with the hand.

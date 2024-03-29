@@ -217,11 +217,11 @@ def main():
 
         #1. Find Fidicials and Update Board ----> Player move
         #Have Spot twist up to see all fiducials        
-        idpos = detectFiducial(expectedNumberOfFiducials, -0.2)
+        idpos = detectFiducial(expectedNumberOfFiducials, -0.2) #list of id and postion (aka coord) pairs
         print(idpos)
-        setOfIds = sorted([ids[0] for ids in idpos])
+        setOfIds = sorted([ids for ids, _ in idpos]) #sorts id numbers
         print(setOfIds)
-        board.updateBoard(setOfIds, player)
+        board.updateBoard(setOfIds, player) #updates board
         
         print("Detection done, found players move....")
         print("-----------------Board State:-------------")
@@ -252,7 +252,8 @@ def main():
         print("Placing Piece....")
         class_obj = follow.fiducial_follow(robot, options, 535)
         
-        movePos = [ids[1] for ids in idpos if ids[0] == id]
+        # movePos.position.x movePos.rotation.x 
+        movePos = [pos for ids, pos in idpos if ids == id] #(id,position) #position -> coordinate
         # We want to tilt until we see the whole board:
         detectFiducial(expectedNumberOfFiducials, -0.2)
         print(movePos)
