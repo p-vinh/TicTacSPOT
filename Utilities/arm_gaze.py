@@ -82,8 +82,8 @@ def gaze_control(config):
                 object_type=request_fiducials).world_objects
             if len(fiducial_objects) > 0:
                 # Return all fiducial objects it sees
-                for fiducial in fiducial_objects:
-                        return fiducial
+                print(fiducial_objects[0])
+                return fiducial_objects[0]
             return None
     
         
@@ -94,7 +94,7 @@ def gaze_control(config):
                 fiducial.apriltag_properties.frame_name_fiducial).to_proto()
             if vision_tform_fiducial is not None:
                 fiducial_rt_world = vision_tform_fiducial.position
-
+        
         # Issue the command via the RobotCommandClient
         unstow_command_id = command_client.robot_command(unstow)
         robot.logger.info('Unstow command issued.')
@@ -103,8 +103,11 @@ def gaze_control(config):
 
         # Convert the location from the moving base frame to the world frame.
         robot_state = robot_state_client.get_robot_state()
-        robot_rt_world = get_vision_tform_body(robot_state.kinematic_state.transforms_snapshot)
+        robot_rt_world = get_vision_tform_body(robot_state.kinematic_state.transforms_snapshot).to_proto()
 
+        
+        print(vision_tform_fiducial)
+        print(robot_rt_world)
         
         # Look at a point 3 meters in front and 4 meters to the left.
         # We are not specifying a hand location, the robot will pick one.
@@ -112,11 +115,11 @@ def gaze_control(config):
 
         gaze_command = RobotCommandBuilder.arm_pose_command(fiducial_rt_world.x,
                                                             fiducial_rt_world.y,
-                                                            fiducial_rt_world.z - robot_rt_world.z, 
-                                                            rotation.w,
-                                                            rotation.x,
-                                                            rotation.y,
-                                                            rotation.z,
+                                                            fiducial_rt_world.z, 
+                                                            vision_tform_fiducial.rotation.w,
+                                                            vision_tform_fiducial.rotation.x,
+                                                            vision_tform_fiducial.rotation.y,
+                                                            vision_tform_fiducial.rotation.z,
                                                             frame_name=VISION_FRAME_NAME)
         # Make the open gripper RobotCommand
         gripper_command = RobotCommandBuilder.claw_gripper_open_command()

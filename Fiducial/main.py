@@ -273,7 +273,7 @@ def main():
             print("Player wins")
             # break
         elif piece == None:
-            print("Tie")
+            print("No one won yet")
             # break
         
         # Wait for player to place their piece
