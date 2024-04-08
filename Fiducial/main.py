@@ -108,7 +108,7 @@ def find_fiducials():
             for fiducial in fiducial_objects:
                 if(fiducial.apriltag_properties.tag_id != BOARD_REF): #Ignore fiducial id that represents the board
                     # ID | World Position
-                    ids.add(tuple(fiducial.apriltag_properties.tag_id, get_a_tform_b(fiducial.transforms_snapshot, VISION_FRAME_NAME, fiducial.apriltag_properties.frame_name_fiducial).to_proto()))
+                    ids.add(tuple((fiducial.apriltag_properties.tag_id, get_a_tform_b(fiducial.transforms_snapshot, VISION_FRAME_NAME, fiducial.apriltag_properties.frame_name_fiducial).to_proto())))
             #IMPORTANT, it sorts the list of IDS in order
             sorted_list = list(ids)
             sorted_list.sort()
