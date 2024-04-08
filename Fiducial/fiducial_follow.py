@@ -268,7 +268,7 @@ class FollowFiducial(object):
             robot_to_object_ewrt_world)
         
         # Pointing from the object to the robot) and Z straight up
-        heading = self.get_desired_angle(robot_to_object_ewrt_world_norm)
+        heading = self.get_desired_angle(self.get_fiducial_orientation())
         
         
         goto_rt_world = np.array([
@@ -383,7 +383,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     bosdyn.client.util.add_base_arguments(parser)
-    parser.add_argument('--distance-margin', default=0.1,
+    parser.add_argument('--distance-margin', default=0.3,
                         help='Distance [meters] that the robot should stop from the fiducial.')
     parser.add_argument('--limit-speed', default=True, type=lambda x: (str(x).lower() == 'true'),
                         help='If the robot should limit its maximum speed.')

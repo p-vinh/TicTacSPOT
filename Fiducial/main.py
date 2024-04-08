@@ -278,7 +278,8 @@ def main():
             # break
         
         # Wait for player to place their piece
-        time.sleep(10)            
+        expectedNumberOfFiducials -= 1   
+        time.sleep(10)         
             
 
 if __name__ == '__main__':
