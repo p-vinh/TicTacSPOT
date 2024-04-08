@@ -108,7 +108,7 @@ def find_fiducials():
             for fiducial in fiducial_objects:
                 if(fiducial.apriltag_properties.tag_id != BOARD_REF): #Ignore fiducial id that represents the board
                     tag_id = fiducial.apriltag_properties.tag_id
-                    if tag_id not in ids:
+                    if tag_id not in ids.keys():
                         # ID | World Position
                         ids[tag_id] = get_a_tform_b(fiducial.transforms_snapshot, VISION_FRAME_NAME, fiducial.apriltag_properties.frame_name_fiducial).to_proto()
             #IMPORTANT, it sorts the list of IDS in order
@@ -222,7 +222,9 @@ def main():
         idpos = detectFiducial(expectedNumberOfFiducials, -0.2) #list of id and postion (aka coord) pairs
         print(idpos)
         sorted_idpos = sorted(idpos, key=lambda x: x[0]) #sorts id numbers
-        print(sorted_idpos)
+
+        for ids, pos in enumerate(sorted_idpos):
+            print(ids)
         board.updateBoard(sorted_idpos, player) #updates board
         
         print("Detection done, found players move....")
