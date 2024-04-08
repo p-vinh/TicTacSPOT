@@ -101,24 +101,26 @@ def block_until_arm_arrives_with_prints(robot, command_client, cmd_id):
         time.sleep(0.1)
 
 
-def get_fiducial_objects():
-    """Get all fiducials that Spot detects with its perception system."""
-    # Get all fiducial objects (an object of a specific type).
 
-    _world_object_client = robot.ensure_client(WorldObjectClient.default_service_name)
-    request_fiducials = [world_object_pb2.WORLD_OBJECT_APRILTAG]
-    fiducial_objects = _world_object_client.list_world_objects(
-        object_type=request_fiducials
-    ).world_objects
-    if len(fiducial_objects) > 0:
-        # Return all fiducial objects it sees
-        print(fiducial_objects[0])
-        return fiducial_objects[0]
-    return None
 
 
 def joint_move_example(robot, movePos, command_client):
     """A simple example of using the Boston Dynamics API to command Spot's arm to perform joint moves."""
+    def get_fiducial_objects():
+        """Get all fiducials that Spot detects with its perception system."""
+        # Get all fiducial objects (an object of a specific type).
+
+        _world_object_client = robot.ensure_client(WorldObjectClient.default_service_name)
+        request_fiducials = [world_object_pb2.WORLD_OBJECT_APRILTAG]
+        fiducial_objects = _world_object_client.list_world_objects(
+            object_type=request_fiducials
+        ).world_objects
+        if len(fiducial_objects) > 0:
+            # Return all fiducial objects it sees
+            print(fiducial_objects[0])
+            return fiducial_objects[0]
+        return None
+    
     try:
         fiducial = get_fiducial_objects()
         if fiducial is not None:
@@ -127,7 +129,8 @@ def joint_move_example(robot, movePos, command_client):
                 VISION_FRAME_NAME,
                 fiducial.apriltag_properties.frame_name_fiducial,
             ).to_proto()
-
+            
+        unstow = RobotCommandBuilder.arm_ready_command()
         cmd_id = command_client.robot_command(unstow)
         robot.logger.info("Unstow command issued.")
 

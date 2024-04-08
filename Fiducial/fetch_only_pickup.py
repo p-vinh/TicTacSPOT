@@ -302,6 +302,7 @@ def pick_up(options, robot):
 
                 time.sleep(0.5)
 
+            time.sleep(0.5)
             if current_state == manipulation_api_pb2.MANIP_STATE_GRASP_SUCCEEDED:
                 print(robot_state_client.get_robot_state().manipulator_state.gripper_open_percentage)
                 gripper_degree = robot_state_client.get_robot_state().manipulator_state.gripper_open_percentage
@@ -309,6 +310,21 @@ def pick_up(options, robot):
                 #checks to be sure gripper degree is not equal or less than 0
                 if gripper_degree <= 0.50:
                     holding_piece = False
+                    grasp_holding_override = manipulation_api_pb2.ApiGraspOverride(
+                                override_request=manipulation_api_pb2.ApiGraspOverride.OVERRIDE_HOLDING)
+                            
+                    carriable_and_stowable_override = manipulation_api_pb2.ApiGraspedCarryStateOverride(
+                                override_request=robot_state_pb2.ManipulatorState.CARRY_STATE_CARRIABLE_AND_STOWABLE)
+                            
+                    override_request = manipulation_api_pb2.ApiGraspOverrideRequest(
+                                api_grasp_override=grasp_holding_override,
+                                carry_state_override=carriable_and_stowable_override)
+                    manipulation_api_client.grasp_override_command(override_request)
+
+                    wait_until_grasp_state_updates(override_request, robot_state_client)
+                    stow = RobotCommandBuilder.arm_stow_command()
+
+                    block_until_arm_arrives(command_client, command_client.robot_command(stow), 3.0)
                     print("Failed to grab")
                 else:
                     holding_piece = not failed       

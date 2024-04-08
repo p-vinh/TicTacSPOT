@@ -80,7 +80,8 @@ def detectFiducial(expectedNumberOfFiducials, pitch):
             found = len(fiducial)
             detect = True
         if detect:
-            print(fiducial, found, maxNumberOfIterations)
+            pass
+            # print(fiducial, found, maxNumberOfIterations)
         maxNumberOfIterations-= 1
     
     if found == expectedNumberOfFiducials:
@@ -221,7 +222,6 @@ def main():
         #Have Spot twist up to see all fiducials        
         idpos = detectFiducial(expectedNumberOfFiducials, -0.2) #list of id and postion (aka coord) pairs
         id_fid = [id[0] for id in idpos]
-        print(id_fid)
         board.updateBoard(id_fid, player) #updates board
         
         print("Detection done, found players move....")
@@ -251,10 +251,13 @@ def main():
         
         # 4. Set up Position
         print("Placing Piece....")
+        
+        print(move, id)
         class_obj = follow.fiducial_follow(robot, options, 535)
         
+        
         # movePos.position.x movePos.rotation.x 
-        movePos = idpos.get(id)
+        movePos = [ids[1] for ids in idpos if ids[0] == id]
         # We want to tilt until we see the whole board:
         detectFiducial(expectedNumberOfFiducials, -0.2)
         print(movePos)
