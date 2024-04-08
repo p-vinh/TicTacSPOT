@@ -260,7 +260,6 @@ def main():
         movePos = [ids[1] for ids in idpos if ids[0] == id]
         # We want to tilt until we see the whole board:
         detectFiducial(expectedNumberOfFiducials, -0.2)
-        print(movePos)
         # 5. Place Piece
         place.place_piece(robot, movePos)
         
