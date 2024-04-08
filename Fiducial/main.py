@@ -103,15 +103,17 @@ def find_fiducials():
         request_fiducials = [world_object_pb2.WORLD_OBJECT_APRILTAG]
         fiducial_objects = _world_object_client.list_world_objects(object_type=request_fiducials).world_objects
         if len(fiducial_objects) > 0:
-            ids = set()
+            ids = {}
             # Find fiducials id
             for fiducial in fiducial_objects:
                 if(fiducial.apriltag_properties.tag_id != BOARD_REF): #Ignore fiducial id that represents the board
-                    # ID | World Position
-                    ids.add(tuple((fiducial.apriltag_properties.tag_id, get_a_tform_b(fiducial.transforms_snapshot, VISION_FRAME_NAME, fiducial.apriltag_properties.frame_name_fiducial).to_proto())))
+                    tag_id = fiducial.apriltag_properties.tag_id
+                    if tag_id not in ids:
+                        # ID | World Position
+                        ids[tag_id] = get_a_tform_b(fiducial.transforms_snapshot, VISION_FRAME_NAME, fiducial.apriltag_properties.frame_name_fiducial).to_proto()
             #IMPORTANT, it sorts the list of IDS in order
-            sorted_list = list(ids)
-            sorted_list.sort()
+            sorted_list = sorted(ids.items(), key=lambda x: x[0])
+
             return sorted_list
         # Return none if no fiducials are found.
         return None
@@ -219,9 +221,9 @@ def main():
         #Have Spot twist up to see all fiducials        
         idpos = detectFiducial(expectedNumberOfFiducials, -0.2) #list of id and postion (aka coord) pairs
         print(idpos)
-        setOfIds = sorted([ids for ids, _ in idpos]) #sorts id numbers
-        print(setOfIds)
-        board.updateBoard(setOfIds, player) #updates board
+        sorted_idpos = sorted(idpos, key=lambda x: x[0]) #sorts id numbers
+        print(sorted_idpos)
+        board.updateBoard(sorted_idpos, player) #updates board
         
         print("Detection done, found players move....")
         print("-----------------Board State:-------------")
@@ -253,7 +255,7 @@ def main():
         class_obj = follow.fiducial_follow(robot, options, 535)
         
         # movePos.position.x movePos.rotation.x 
-        movePos = [pos for ids, pos in idpos if ids == id] #(id,position) #position -> coordinate
+        movePos = idpos.get(id)
         # We want to tilt until we see the whole board:
         detectFiducial(expectedNumberOfFiducials, -0.2)
         print(movePos)
