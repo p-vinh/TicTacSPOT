@@ -16,14 +16,16 @@ import bosdyn.client
 import bosdyn.client.estop
 import bosdyn.client.lease
 import bosdyn.client.util
-from bosdyn.api import arm_command_pb2, robot_command_pb2, synchronized_command_pb2
+from bosdyn.api import arm_command_pb2, robot_command_pb2, synchronized_command_pb2, world_object_pb2
 from bosdyn.client.lease import LeaseClient
+from bosdyn.client.frame_helpers import (VISION_FRAME_NAME, get_a_tform_b)
+from bosdyn.client.world_object import WorldObjectClient
 
 from bosdyn.client.robot_command import (
     RobotCommandBuilder,
     RobotCommandClient,
     block_until_arm_arrives,
-    blocking_stand,
+    blocking_stand
 )
 from bosdyn.util import duration_to_seconds
 

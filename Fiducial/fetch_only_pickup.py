@@ -307,7 +307,7 @@ def pick_up(options, robot):
                 gripper_degree = robot_state_client.get_robot_state().manipulator_state.gripper_open_percentage
                 print("Gripper Degree Percentage:", gripper_degree)
                 #checks to be sure gripper degree is not equal or less than 0
-                if gripper_degree <= 0.0:
+                if gripper_degree <= 0.50:
                     holding_piece = False
                     print("Failed to grab")
                 else:
