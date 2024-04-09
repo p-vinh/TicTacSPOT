@@ -17,4 +17,4 @@ python .\test_pickup\identify_object.py --service tictactoe --confidence 0.5 --m
 
 python .\pickup\fetch_only_pickup.py -s tictactoe -m my_efficient_model -c 0.85 192.168.80.3
 
-python main.py -m my_efficient_model -s tictactoe -c 0.85 -d 0.1 192.168.80.3
+python main.py -m my_efficient_model -s tictactoe -c 0.85 192.168.80.3

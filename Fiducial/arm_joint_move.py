@@ -104,11 +104,33 @@ def block_until_arm_arrives_with_prints(robot, command_client, cmd_id):
 
 
 
-def joint_move_example(robot, movePos, command_client):
+def joint_move_example(robot, fid_id, command_client):
     """A simple example of using the Boston Dynamics API to command Spot's arm to perform joint moves."""
+    def get_fiducial_objects():
+        """Get all fiducials that Spot detects with its perception system."""
+        # Get all fiducial objects (an object of a specific type).
 
+        _world_object_client = robot.ensure_client(WorldObjectClient.default_service_name)
+        request_fiducials = [world_object_pb2.WORLD_OBJECT_APRILTAG]
+        fiducial_objects = _world_object_client.list_world_objects(
+            object_type=request_fiducials
+        ).world_objects
+        if len(fiducial_objects) > 0:
+            # Return all fiducial objects it sees
+            for fid in fiducial_objects:
+                if fid.apriltag_properties.tag_id == fid_id:
+                    return fid
+        return None
     
     try:
+        fiducial = get_fiducial_objects()
+        if fiducial is not None:
+            vision_tform_fiducial = get_a_tform_b(
+                fiducial.transforms_snapshot,
+                VISION_FRAME_NAME,
+                fiducial.apriltag_properties.frame_name_fiducial,
+            ).to_proto()
+            
         unstow = RobotCommandBuilder.arm_ready_command()
         cmd_id = command_client.robot_command(unstow)
         robot.logger.info("Unstow command issued.")
@@ -116,27 +138,28 @@ def joint_move_example(robot, movePos, command_client):
         block_until_arm_arrives(command_client, cmd_id, 3.0)
 
         gaze_command = RobotCommandBuilder.arm_pose_command(
-            movePos.position.x,
-            movePos.position.y,
-            movePos.position.z,
-            movePos.rotation.w,
-            movePos.rotation.x,
-            movePos.rotation.y,
-            movePos.rotation.z,
+            vision_tform_fiducial.position.x,
+            vision_tform_fiducial.position.y,
+            vision_tform_fiducial.position.z,
+            vision_tform_fiducial.rotation.w,
+            vision_tform_fiducial.rotation.x,
+            vision_tform_fiducial.rotation.y,
+            vision_tform_fiducial.rotation.z,
             frame_name=VISION_FRAME_NAME,
         )
 
-        gripper_command = RobotCommandBuilder.claw_gripper_open_command()
         command = RobotCommandBuilder.build_synchro_command(
-            gripper_command,
             gaze_command
         )
 
         robot.logger.info("Requesting gaze.")
         gaze_command_id = command_client.robot_command(command)
 
-        block_until_arm_arrives(command_client, gaze_command_id, 10.0)
-        
+        block_until_arm_arrives(command_client, gaze_command_id, 20.0)
+        time.sleep(3)
+        gripper_command = RobotCommandBuilder.claw_gripper_open_command()
+        command = RobotCommandBuilder.build_synchro_command(gripper_command)
+        block_until_arm_arrives(command_client, command_client.robot_command(command), 3)
         # Stow
         print("Carrying Finished, Stowing...")
         stow = RobotCommandBuilder.arm_stow_command()

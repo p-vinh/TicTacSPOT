@@ -214,7 +214,28 @@ class FollowFiducial(object):
             while (not self.final_state() and current_time - start_time < end_time):
                 time.sleep(.25)
                 current_time = time.time()
-            
+        
+        # time.sleep(0.5)
+        # # MOVEMENT CHANGES
+        # fiducial = self.get_fiducial_objects()
+        # if fiducial is not None:
+        #     vision_tform_fiducial = get_a_tform_b(
+        #         fiducial.transforms_snapshot, VISION_FRAME_NAME,
+        #         fiducial.apriltag_properties.frame_name_fiducial).to_proto()
+        #     if vision_tform_fiducial is not None:
+        #         detected_fiducial = True
+        #         fiducial_rt_world = vision_tform_fiducial.position
+        # else:
+        #     print("Cant find fiducial")
+                
+        # mobility_params = self.set_mobility_params()
+        # heading = self.get_desired_angle(self.get_fiducial_orientation())
+        # tag_cmd = RobotCommandBuilder.synchro_se2_trajectory_point_command(
+        #     goal_x=board_properties.position.x, goal_y=board_properties.position.y,
+        #     goal_heading=heading, frame_name=VISION_FRAME_NAME, params=mobility_params,
+        #     body_height=self._current_tag_world_pose[2], locomotion_hint=spot_command_pb2.HINT_AUTO)
+        # end_time = 5.0
+
             # print(board_properties.transforms_snapshot.child_to_parent_edge_map['vision'].parent_tform_child.rotation)
         # print(board_properties)
         return
@@ -237,19 +258,19 @@ class FollowFiducial(object):
         rotations = board_properties.rotation
         yaw = Quat(rotations.w, rotations.x, rotations.y, rotations.z).to_yaw()
         fhat = [np.cos(yaw), np.sin(yaw), 0]
-
+        print("Fhat: ", fhat)
         return fhat
 
     def get_desired_angle(self, vhat):
         """Compute heading based on the vector from robot to object."""
-        zhat = [0.0, 0.0, 1.0]
+        # zhat = [0.0, 0.0, 1.0]
     
-        yhat = np.cross(zhat, vhat) # Gets the cross product based on the given vector
-        mat = np.array([vhat, yhat, zhat]).transpose()
-        return Quat.from_matrix(mat).to_yaw()
+        # yhat = np.cross(zhat, vhat) # Gets the cross product based on the given vector
+        # mat = np.array([vhat, yhat, zhat]).transpose()
+        # return Quat.from_matrix(mat).to_yaw()
 
         # Returns the angle between the robot and the object in radians
-        # return np.arctan2(vhat[1], vhat[0])
+        return np.arctan2(vhat[1], vhat[0])
         
     def offset_tag_pose(self, object_rt_world, dist_margin=1.0):
         """Offset the go-to location of the fiducial and compute the desired heading."""
@@ -258,13 +279,9 @@ class FollowFiducial(object):
         robot_to_object_ewrt_world = np.array(
             [object_rt_world.x - robot_rt_world.x,
              object_rt_world.y - robot_rt_world.y,
-             object_rt_world.z - robot_rt_world.z])
+             object_rt_world.z])
         
-
-        if np.linalg.norm(robot_to_object_ewrt_world) < 0.01:
-            robot_to_object_ewrt_world_norm = robot_rt_world.transform_point(1, 0, 0)
-        else:
-            robot_to_object_ewrt_world_norm = robot_to_object_ewrt_world / np.linalg.norm(
+        robot_to_object_ewrt_world_norm = robot_to_object_ewrt_world / np.linalg.norm(
             robot_to_object_ewrt_world)
         
         # Pointing from the object to the robot) and Z straight up
@@ -272,15 +289,17 @@ class FollowFiducial(object):
         
         
         goto_rt_world = np.array([
-            object_rt_world.x - np.cos(heading) * dist_margin,
-            object_rt_world.y - np.sin(heading) * dist_margin,
-            object_rt_world.z - robot_to_object_ewrt_world_norm[2]
+            object_rt_world.x - robot_to_object_ewrt_world_norm[0] * dist_margin,
+            object_rt_world.y - robot_to_object_ewrt_world_norm[1] * dist_margin,
+            object_rt_world.z
         ])
         
-        # print("Object Position: ", object_rt_world)
-        # print("Robot To Object: ", robot_to_object_ewrt_world_norm)
-        # print("Goto RT World: ", goto_rt_world)
-        # print("Heading: ", heading)
+        
+        print("Object Position: ", object_rt_world)
+        print("Robot to Object: ", robot_rt_world)
+        print("Robot To Object Norm: ", robot_to_object_ewrt_world_norm)
+        print("Heading: ", heading)
+        print("Goto RT World: ", goto_rt_world)
         
         return goto_rt_world, heading
     

@@ -104,16 +104,13 @@ def find_fiducials():
         request_fiducials = [world_object_pb2.WORLD_OBJECT_APRILTAG]
         fiducial_objects = _world_object_client.list_world_objects(object_type=request_fiducials).world_objects
         if len(fiducial_objects) > 0:
-            ids = {}
+            ids = set()
             # Find fiducials id
             for fiducial in fiducial_objects:
                 if(fiducial.apriltag_properties.tag_id != BOARD_REF): #Ignore fiducial id that represents the board
-                    tag_id = fiducial.apriltag_properties.tag_id
-                    if tag_id not in ids:
-                        # ID | World Position
-                        ids[tag_id] = get_a_tform_b(fiducial.transforms_snapshot, VISION_FRAME_NAME, fiducial.apriltag_properties.frame_name_fiducial).to_proto()
+                    ids.add(fiducial.apriltag_properties.tag_id)
             #IMPORTANT, it sorts the list of IDS in order
-            sorted_list = sorted(ids.items(), key=lambda x: x[0])
+            sorted_list = sorted(ids)
             
             return sorted_list
         # Return none if no fiducials are found.
@@ -153,7 +150,7 @@ def main():
     parser.add_argument('-c', '--confidence-piece',
                         help='Minimum confidence to return an object for the dogoy (0.0 to 1.0)',
                         default=0.5, type=float)
-    parser.add_argument('-d', '--distance-margin', default=0.6,
+    parser.add_argument('-d', '--distance-margin', default=0.45,
                         help='Distance [meters] that the robot should stop from the fiducial.')
     parser.add_argument('--limit-speed', default=True, type=lambda x: (str(x).lower() == 'true'),
                         help='If the robot should limit its maximum speed.')
@@ -220,9 +217,8 @@ def main():
 
         #1. Find Fidicials and Update Board ----> Player move
         #Have Spot twist up to see all fiducials        
-        idpos = detectFiducial(expectedNumberOfFiducials, -0.2) #list of id and postion (aka coord) pairs
-        id_fid = [id[0] for id in idpos]
-        board.updateBoard(id_fid, player) #updates board
+        ids = detectFiducial(expectedNumberOfFiducials, -0.2) #list of id and postion (aka coord) pairs
+        board.updateBoard(ids, player) #updates board
         
         print("Detection done, found players move....")
         print("-----------------Board State:-------------")
@@ -255,13 +251,10 @@ def main():
         print(move, id)
         class_obj = follow.fiducial_follow(robot, options, 535)
         
-        
-        # movePos.position.x movePos.rotation.x 
-        movePos = [ids[1] for ids in idpos if ids[0] == id]
         # We want to tilt until we see the whole board:
         detectFiducial(expectedNumberOfFiducials, -0.2)
         # 5. Place Piece
-        place.place_piece(robot, movePos)
+        place.place_piece(robot, id)
         
         # 6. Backup From Reference Point
         # class_obj.backup_from_reference(2) # Backup 5 meters from reference point
