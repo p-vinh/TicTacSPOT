@@ -30,6 +30,8 @@ from bosdyn.client.frame_helpers import (
     get_vision_tform_body,
 )
 from bosdyn.client.world_object import WorldObjectClient
+from bosdyn.client.inverse_kinematics import InverseKinematicsClient
+from bosdyn.api.spot.inverse_kinematics_pb2 import (InverseKinematicsRequest, InverseKinematicsResponse)
 from scipy.spatial.transform import Rotation as R
 
 from bosdyn.client.robot_command import (
@@ -134,6 +136,7 @@ def joint_move_example(robot, fid_id, command_client):
         return None
 
     try:
+        ik_client = robot.ensure_client()
         fiducial = get_fiducial_objects()
         if fiducial is not None:
             vision_tform_fiducial = get_a_tform_b(
@@ -142,25 +145,11 @@ def joint_move_example(robot, fid_id, command_client):
                 fiducial.apriltag_properties.frame_name_fiducial,
             ).to_proto()
 
-            vision_tform_body = get_vision_tform_body(
-                robot_state.kinematic_state.transforms_snapshot
-            )
+            end_effector_position = vision_tform_fiducial.position
+            end_effector_orientation = vision_tform_fiducial.rotation
 
-            vision_tform_body_mat = R.from_quat([vision_tform_body.rotation.x, vision_tform_body.rotation.y, vision_tform_body.rotation.z, vision_tform_body.rotation.w]).as_matrix()
-            vision_tform_body_mat = np.hstack((vision_tform_body_mat, np.array([vision_tform_body.position.x, vision_tform_body.position.y, vision_tform_body.position.z]).reshape(-1, 1)))
-            vision_tform_body_mat = np.vstack((vision_tform_body_mat, np.array([0, 0, 0, 1])))
 
-            vision_tform_fiducial_mat = R.from_quat([vision_tform_fiducial.rotation.x, vision_tform_fiducial.rotation.y, vision_tform_fiducial.rotation.z, vision_tform_fiducial.rotation.w]).as_matrix()
-            vision_tform_fiducial_mat = np.hstack((vision_tform_fiducial_mat, np.array([vision_tform_fiducial.position.x, vision_tform_fiducial.position.y, vision_tform_fiducial.position.z]).reshape(-1, 1)))
-            vision_tform_fiducial_mat = np.vstack((vision_tform_fiducial_mat, np.array([0, 0, 0, 1])))
 
-            body_tform_fiducial_mat = np.linalg.inv(vision_tform_body_mat) @ vision_tform_fiducial_mat
-
-            body_tform_fiducial = SE3Pose()
-            body_tform_fiducial.position.x = body_tform_fiducial_mat[0, 3]
-            body_tform_fiducial.position.y = body_tform_fiducial_mat[1, 3]
-            body_tform_fiducial.position.z = body_tform_fiducial_mat[2, 3]
-            body_tform_fiducial.rotation = R.from_matrix(body_tform_fiducial_mat[:3, :3]).as_quat()
 
             unstow = RobotCommandBuilder.arm_ready_command()
             cmd_id = command_client.robot_command(unstow)
