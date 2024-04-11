@@ -16,16 +16,26 @@ import bosdyn.client
 import bosdyn.client.estop
 import bosdyn.client.lease
 import bosdyn.client.util
-from bosdyn.api import arm_command_pb2, robot_command_pb2, synchronized_command_pb2, world_object_pb2
+from bosdyn.api import (
+    arm_command_pb2,
+    robot_command_pb2,
+    synchronized_command_pb2,
+    world_object_pb2,
+)
 from bosdyn.client.lease import LeaseClient
-from bosdyn.client.frame_helpers import (VISION_FRAME_NAME, get_a_tform_b)
+from bosdyn.client.frame_helpers import (
+    VISION_FRAME_NAME,
+    get_a_tform_b,
+    BODY_FRAME_NAME,
+    get_vision_tform_body,
+)
 from bosdyn.client.world_object import WorldObjectClient
 
 from bosdyn.client.robot_command import (
     RobotCommandBuilder,
     RobotCommandClient,
     block_until_arm_arrives,
-    blocking_stand
+    blocking_stand,
 )
 from bosdyn.util import duration_to_seconds
 
@@ -101,16 +111,16 @@ def block_until_arm_arrives_with_prints(robot, command_client, cmd_id):
         time.sleep(0.1)
 
 
-
-
-
 def joint_move_example(robot, fid_id, command_client):
     """A simple example of using the Boston Dynamics API to command Spot's arm to perform joint moves."""
+
     def get_fiducial_objects():
         """Get all fiducials that Spot detects with its perception system."""
         # Get all fiducial objects (an object of a specific type).
 
-        _world_object_client = robot.ensure_client(WorldObjectClient.default_service_name)
+        _world_object_client = robot.ensure_client(
+            WorldObjectClient.default_service_name
+        )
         request_fiducials = [world_object_pb2.WORLD_OBJECT_APRILTAG]
         fiducial_objects = _world_object_client.list_world_objects(
             object_type=request_fiducials
@@ -121,7 +131,7 @@ def joint_move_example(robot, fid_id, command_client):
                 if fid.apriltag_properties.tag_id == fid_id:
                     return fid
         return None
-    
+
     try:
         fiducial = get_fiducial_objects()
         if fiducial is not None:
@@ -130,37 +140,42 @@ def joint_move_example(robot, fid_id, command_client):
                 VISION_FRAME_NAME,
                 fiducial.apriltag_properties.frame_name_fiducial,
             ).to_proto()
-            
-        unstow = RobotCommandBuilder.arm_ready_command()
-        cmd_id = command_client.robot_command(unstow)
-        robot.logger.info("Unstow command issued.")
 
-        block_until_arm_arrives(command_client, cmd_id, 3.0)
+            vision_tform_body = get_vision_tform_body(
+                robot_state.kinematic_state.transforms_snapshot
+            )
+            body_tform_fiducial = vision_tform_body.inverse() * vision_tform_fiducial
 
-        gaze_command = RobotCommandBuilder.arm_pose_command(
-            vision_tform_fiducial.position.x,
-            vision_tform_fiducial.position.y,
-            vision_tform_fiducial.position.z,
-            vision_tform_fiducial.rotation.w,
-            vision_tform_fiducial.rotation.x,
-            vision_tform_fiducial.rotation.y,
-            vision_tform_fiducial.rotation.z,
-            frame_name=VISION_FRAME_NAME,
-        )
+            unstow = RobotCommandBuilder.arm_ready_command()
+            cmd_id = command_client.robot_command(unstow)
+            robot.logger.info("Unstow command issued.")
 
-        command = RobotCommandBuilder.build_synchro_command(
-            gaze_command
-        )
+            block_until_arm_arrives(command_client, cmd_id, 3.0)
 
-        robot.logger.info("Requesting gaze.")
-        gaze_command_id = command_client.robot_command(command)
+            gaze_command = RobotCommandBuilder.arm_pose_command(
+                body_tform_fiducial.position.x,
+                body_tform_fiducial.position.y,
+                body_tform_fiducial.position.z,
+                body_tform_fiducial.rotation.w,
+                body_tform_fiducial.rotation.x,
+                body_tform_fiducial.rotation.y,
+                body_tform_fiducial.rotation.z,
+                frame_name=BODY_FRAME_NAME,
+            )
 
-        block_until_arm_arrives(command_client, gaze_command_id, 20.0)
-        time.sleep(3)
-        # Stow
-        print("Carrying Finished, Stowing...")
-        stow = RobotCommandBuilder.arm_stow_command()
-        block_until_arm_arrives(command_client, command_client.robot_command(stow), 3.0)
+            command = RobotCommandBuilder.build_synchro_command(gaze_command)
+
+            robot.logger.info("Requesting gaze.")
+            gaze_command_id = command_client.robot_command(command)
+
+            block_until_arm_arrives(command_client, gaze_command_id, 20.0)
+            time.sleep(3)
+            # Stow
+            print("Carrying Finished, Stowing...")
+            stow = RobotCommandBuilder.arm_stow_command()
+            block_until_arm_arrives(
+                command_client, command_client.robot_command(stow), 3.0
+            )
 
         return True
     except Exception as exc:  # pylint: disable=broad-except
@@ -354,6 +369,7 @@ if __name__ == "__main__":
     lease_client = robot.ensure_client(LeaseClient.default_service_name)
     command_client = robot.ensure_client(RobotCommandClient.default_service_name)
 
+    lease_client.take()
     with bosdyn.client.lease.LeaseKeepAlive(
         lease_client, must_acquire=True, return_at_exit=True
     ):
@@ -366,4 +382,4 @@ if __name__ == "__main__":
 
         blocking_stand(command_client)
         time.sleep(0.35)
-        place_piece(robot, (0, 1), 526)
+        place_piece(robot, 525)
