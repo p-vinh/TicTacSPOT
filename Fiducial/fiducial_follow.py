@@ -168,7 +168,8 @@ class FollowFiducial(object):
                 self.go_to_tag(fiducial_rt_world)
                 break
             else:
-                print('No fiducials found')
+                pass
+                # print('No fiducials found')
             self._attempts += 1  #increment attempts at finding a fiducial
         if self._attempts >= self._max_attempts:
             return False
@@ -202,7 +203,7 @@ class FollowFiducial(object):
         tag_cmd = RobotCommandBuilder.synchro_se2_trajectory_point_command(
             goal_x=self._current_tag_world_pose[0], goal_y=self._current_tag_world_pose[1],
             goal_heading=self._angle_desired, frame_name=VISION_FRAME_NAME, params=mobility_params,
-            body_height=self._current_tag_world_pose[2], locomotion_hint=spot_command_pb2.HINT_AUTO)
+            body_height=0.0, locomotion_hint=spot_command_pb2.HINT_AUTO)
         end_time = 5.0
         if self._movement_on:
             #Issue the command to the robot
@@ -245,6 +246,8 @@ class FollowFiducial(object):
         """Check if the current robot state is within range of the fiducial position."""
         robot_state = get_vision_tform_body(self.robot_state.kinematic_state.transforms_snapshot)
         robot_angle = robot_state.rot.to_yaw()
+        print("Robot Angle: ", robot_angle)
+        
         if self._current_tag_world_pose.size != 0:
             x_dist = abs(self._current_tag_world_pose[0] - robot_state.x)
             y_dist = abs(self._current_tag_world_pose[1] - robot_state.y)
@@ -258,19 +261,20 @@ class FollowFiducial(object):
         rotations = board_properties.rotation
         yaw = Quat(rotations.w, rotations.x, rotations.y, rotations.z).to_yaw()
         fhat = [np.cos(yaw), np.sin(yaw), 0]
-        print("Fhat: ", fhat)
         return fhat
 
     def get_desired_angle(self, vhat):
         """Compute heading based on the vector from robot to object."""
         # zhat = [0.0, 0.0, 1.0]
-    
-        # yhat = np.cross(zhat, vhat) # Gets the cross product based on the given vector
-        # mat = np.array([vhat, yhat, zhat]).transpose()
+        # fhat = self.get_fiducial_orientation()
+        # yhat = np.cross(zhat, fhat) # Gets the cross product based on the given vector
+        # mat = np.array([fhat, yhat, zhat]).transpose()
         # return Quat.from_matrix(mat).to_yaw()
 
         # Returns the angle between the robot and the object in radians
-        return np.arctan2(vhat[1], vhat[0])
+        heading = np.arctan2(vhat[1], vhat[0])
+        norm_heading = np.arctan2(np.sin(heading), np.cos(heading))
+        return norm_heading
         
     def offset_tag_pose(self, object_rt_world, dist_margin=1.0):
         """Offset the go-to location of the fiducial and compute the desired heading."""
@@ -285,8 +289,7 @@ class FollowFiducial(object):
             robot_to_object_ewrt_world)
         
         # Pointing from the object to the robot) and Z straight up
-        heading = self.get_desired_angle(self.get_fiducial_orientation())
-        
+        heading = self.get_desired_angle(robot_to_object_ewrt_world_norm)
         
         goto_rt_world = np.array([
             object_rt_world.x - robot_to_object_ewrt_world_norm[0] * dist_margin,
@@ -406,7 +409,7 @@ if __name__ == "__main__":
                         help='Distance [meters] that the robot should stop from the fiducial.')
     parser.add_argument('--limit-speed', default=True, type=lambda x: (str(x).lower() == 'true'),
                         help='If the robot should limit its maximum speed.')
-    parser.add_argument('--avoid-obstacles', default=True, type=lambda x:
+    parser.add_argument('--avoid-obstacles', default=False, type=lambda x:
                         (str(x).lower() == 'true'),
                         help='If the robot should have obstacle avoidance enabled.')
     parser.add_argument(

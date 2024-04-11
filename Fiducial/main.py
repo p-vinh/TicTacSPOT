@@ -26,9 +26,7 @@ import bosdyn.client.estop
 #pylint: disable=no-member
 LOGGER = logging.getLogger()
 BOARD_REF = 535
-LIST_IDS = [526, 527, 528, 529, 530,
-            531, 532, 533,
-            534]
+LIST_IDS = [521, 522, 523, 524, 525, 526, 527, 528, 529]
 # Use this length to make sure we're commanding the head of the robot
 # to a position instead of the center.
 BODY_LENGTH = 1.1
@@ -80,8 +78,7 @@ def detectFiducial(expectedNumberOfFiducials, pitch):
             found = len(fiducial)
             detect = True
         if detect:
-            pass
-            # print(fiducial, found, maxNumberOfIterations)
+            print(fiducial, found, maxNumberOfIterations)
         maxNumberOfIterations-= 1
     
     if found == expectedNumberOfFiducials:

@@ -191,8 +191,21 @@ class FollowFiducial(object):
                     detected_fiducial = True
 
             if detected_fiducial:
+                
+                print("Vision Tform Fiducial:")
+                print(vision_tform_fiducial)
+                
+                robot_rt_world = get_vision_tform_body(self.robot_state.kinematic_state.transforms_snapshot)
+                print("Robot RT world:")
+                print(robot_rt_world)
+                
+                self._current_tag_world_pose, self._angle_desired = self.offset_tag_pose(fiducial_rt_world, self._tag_offset)
+                print("Current Tag World Pose")
+                print(self._current_tag_world_pose)
+                
                 # Go to the tag and stop within a certain distance
-                self.go_to_tag(fiducial_rt_world)
+                # self.go_to_tag(fiducial_rt_world)
+                break
             else:
                 print('No fiducials found')
 
@@ -358,12 +371,13 @@ class FollowFiducial(object):
             fiducial_rt_world, self._tag_offset)
 
         #Command the robot to go to the tag in kinematic odometry frame
+        # BODY_FRAME was changed to VISION
         mobility_params = self.set_mobility_params()
         tag_cmd = RobotCommandBuilder.synchro_se2_trajectory_point_command(
             goal_x=self._current_tag_world_pose[0], goal_y=self._current_tag_world_pose[1],
             goal_heading=self._angle_desired, frame_name=VISION_FRAME_NAME, params=mobility_params,
             body_height=0.0, locomotion_hint=spot_command_pb2.HINT_AUTO)
-        end_time = 5.0
+        end_time = 30.0
         if self._movement_on and self._powered_on:
             #Issue the command to the robot
             self._robot_command_client.robot_command(lease=None, command=tag_cmd,
@@ -398,15 +412,22 @@ class FollowFiducial(object):
     def offset_tag_pose(self, object_rt_world, dist_margin=1.0):
         """Offset the go-to location of the fiducial and compute the desired heading."""
         robot_rt_world = get_vision_tform_body(self.robot_state.kinematic_state.transforms_snapshot)
+        
         robot_to_object_ewrt_world = np.array(
             [object_rt_world.x - robot_rt_world.x, object_rt_world.y - robot_rt_world.y, 0])
+        
         robot_to_object_ewrt_world_norm = robot_to_object_ewrt_world / np.linalg.norm(
             robot_to_object_ewrt_world)
+        
         heading = self.get_desired_angle(robot_to_object_ewrt_world_norm)
+        
         goto_rt_world = np.array([
             object_rt_world.x - robot_to_object_ewrt_world_norm[0] * dist_margin,
             object_rt_world.y - robot_to_object_ewrt_world_norm[1] * dist_margin
         ])
+        
+        print("goto_rt_world", goto_rt_world)
+        print("heading: ", heading)
         return goto_rt_world, heading
 
     def set_mobility_params(self):
@@ -583,6 +604,7 @@ def main():
                 image_viewer = DisplayImagesAsync(fiducial_follower)
                 image_viewer.start()
             lease_client = robot.ensure_client(LeaseClient.default_service_name)
+            lease_client.take()
             with bosdyn.client.lease.LeaseKeepAlive(lease_client, must_acquire=True,
                                                     return_at_exit=True):
                 fiducial_follower.start()
