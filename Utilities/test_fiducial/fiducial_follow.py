@@ -198,6 +198,10 @@ class FollowFiducial(object):
                 robot_rt_world = get_vision_tform_body(self.robot_state.kinematic_state.transforms_snapshot)
                 print("Robot RT world:")
                 print(robot_rt_world)
+
+                robot_world_coordinates = get_a_tform_b(robot_rt_world, VISION_FRAME_NAME, "Spot").to_proto()
+                print("Robot World Coordinates:")
+                print(robot_world_coordinates)
                 
                 self._current_tag_world_pose, self._angle_desired = self.offset_tag_pose(fiducial_rt_world, self._tag_offset)
                 print("Current Tag World Pose")

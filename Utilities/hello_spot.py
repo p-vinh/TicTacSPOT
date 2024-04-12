@@ -91,6 +91,7 @@ def hello_spot(config):
         # Query the robot for its current state before issuing the stand with yaw command.
         # This state provides a reference pose for issuing a frame based body offset command.
         robot_state = robot_state_client.get_robot_state()
+        print(robot_state)
 
         # Tell the robot to stand in a twisted position.
         #

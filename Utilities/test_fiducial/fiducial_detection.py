@@ -158,12 +158,6 @@ class FollowFiducial(object):
                 # Get the all fiducial objects
                 fiducial = self.get_fiducial_objects()
                 if fiducial is not None:
-                    # vision_tform_fiducial = get_a_tform_b(
-                    #     fiducial.transforms_snapshot, VISION_FRAME_NAME,
-                    #     fiducial.apriltag_properties.frame_name_fiducial).to_proto()
-                    # if vision_tform_fiducial is not None:
-                    #     detected_fiducial = True
-                    #     fiducial_rt_world = vision_tform_fiducial.position
                     detected_fiducial = True
 
             if detected_fiducial:
