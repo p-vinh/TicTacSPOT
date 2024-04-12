@@ -17,11 +17,13 @@ import bosdyn.client
 import bosdyn.client.estop
 import bosdyn.client.lease
 import bosdyn.client.util
+import bosdyn.client.math_helpers
 from bosdyn.api import (
     arm_command_pb2,
     robot_command_pb2,
     synchronized_command_pb2,
     world_object_pb2,
+    geometry_pb2
 )
 from bosdyn.client.lease import LeaseClient
 from bosdyn.client.frame_helpers import (
@@ -34,8 +36,6 @@ from bosdyn.client.frame_helpers import (
     ODOM_FRAME_NAME
 )
 from bosdyn.client.world_object import WorldObjectClient
-from bosdyn.client.inverse_kinematics import InverseKinematicsClient
-from bosdyn.api.spot.inverse_kinematics_pb2 import (InverseKinematicsRequest, InverseKinematicsResponse)
 from scipy.spatial.transform import Rotation as R
 
 from bosdyn.client.robot_command import (
@@ -143,7 +143,7 @@ def joint_move_example(robot, fid_id, command_client):
         return None
 
     try:
-        ik_client = robot.ensure_client(InverseKinematicsClient.default_service_name)
+        robot_state = robot.ensure_client(RobotStateClient.default_service_name)
         fiducial = get_fiducial_objects()
         if fiducial is not None:
             vision_tform_fiducial = get_a_tform_b(
@@ -152,7 +152,6 @@ def joint_move_example(robot, fid_id, command_client):
                 fiducial.apriltag_properties.frame_name_fiducial,
             ).to_proto()
             
-            # Define a stand command that we'll send if the IK service does not find a solution.
             body_control = spot_command_pb2.BodyControlParams(
                 body_assist_for_manipulation=spot_command_pb2.BodyControlParams.
                 BodyAssistForManipulation(enable_hip_height_assist=True, enable_body_yaw_assist=True))
@@ -162,66 +161,39 @@ def joint_move_example(robot, fid_id, command_client):
             # Now, let's set our piece frame to be the tip of the robot's bottom jaw. Flip the
             # orientation so that when the hand is pointed downwards, the piece's z-axis is
             # pointed upward.
-            wr1_T_tool = SE3Pose(0.23589, 0, -0.03943, Quat.from_pitch(-math.pi / 2))
-            # odom_T_body = get_a_tform_b(robot_state.kinematic_state.transforms_snapshot,
-            #                         ODOM_FRAME_NAME, BODY_FRAME_NAME)
-            # task_T_body = odom_T_task.inverse() * odom_T_body
+            wrist_tform_tool = SE3Pose(x=0.25, y=0, z=0, rot=Quat(w=0.5, x=0.5, y=-0.5, z=-0.5))
+
+            robot_rt_world = get_vision_tform_body(robot_state.get_robot_state().kinematic_state.transforms_snapshot)
+            
             # Unstow the arm
             ready_command = RobotCommandBuilder.arm_ready_command(
                 build_on_command=body_assist_enabled_stand_command)
             ready_command_id = command_client.robot_command(ready_command)
             robot.logger.info('Going to "ready" pose')
             block_until_arm_arrives(command_client, ready_command_id, 3.0)
+
+            print(vision_tform_fiducial)
+            rotation = Quat()
+            print(rotation)
+            print(robot_rt_world)
             
-            ik_request = InverseKinematicsRequest(
-                root_frame_name=ODOM_FRAME_NAME,
-                scene_tform_task=vision_tform_fiducial,
-                wrist_mounted_tool=InverseKinematicsRequest.WristMountedTool(
-                    wrist_tform_tool=wr1_T_tool.to_proto()),
-                tool_pose_task=InverseKinematicsRequest.ToolPoseTask(
-                    task_tform_desired_tool=task_T_desired_tool.to_proto()),
+            gaze_command = RobotCommandBuilder.arm_pose_command(
+                vision_tform_fiducial.position.x,
+                vision_tform_fiducial.position.y,
+                vision_tform_fiducial.position.z,
+                rotation.w,
+                rotation.x,
+                rotation.y,
+                rotation.z,
+                frame_name=VISION_FRAME_NAME,
             )
-            
-            
-            
-            ik_reponse = ik_client.inverse_kinematics(ik_request)
-            
-            # Attempt to move to each of the desired tool pose to check the IK results.
-            stand_command = None
-            if ik_reponse.status == InverseKinematicsResponse.STATUS_OK:
-                odom_T_desired_body = get_a_tform_b(
-                    ik_reponse.robot_configuration.transforms_snapshot, ODOM_FRAME_NAME,
-                    BODY_FRAME_NAME)
-                mobility_params = spot_command_pb2.MobilityParams(
-                    body_control=spot_command_pb2.BodyControlParams(
-                        body_pose=RobotCommandBuilder.body_pose(ODOM_FRAME_NAME,
-                                                                odom_T_desired_body.to_proto())))
-                stand_command = RobotCommandBuilder.synchro_stand_command(params=mobility_params)
-            else:
-                stand_command = body_assist_enabled_stand_command
-            arm_command = RobotCommandBuilder.arm_pose_command_from_pose(
-                (odom_T_task * task_T_desired_tool).to_proto(), ODOM_FRAME_NAME, 1,
-                build_on_command=stand_command)
-            arm_command.synchronized_command.arm_command.arm_cartesian_command.wrist_tform_tool.CopyFrom(
-                wr1_T_tool.to_proto())
-            arm_command_id = command_client.robot_command(arm_command)
-            reachable_cmd = block_until_arm_arrives(command_client, arm_command_id, 2)
 
-            # gaze_command = RobotCommandBuilder.arm_pose_command(
-            #     body_tform_fiducial.position.x,
-            #     body_tform_fiducial.position.y,
-            #     body_tform_fiducial.position.z,
-            #     body_tform_fiducial.rotation.w,
-            #     body_tform_fiducial.rotation.x,
-            #     body_tform_fiducial.rotation.y,
-            #     body_tform_fiducial.rotation.z,
-            #     frame_name=BODY_FRAME_NAME,
-            # )
+            arm_command = RobotCommandBuilder.arm_cartesian_move_helper([vision_tform_fiducial], [3.0], VISION_FRAME_NAME, wrist_tform_tool=wrist_tform_tool.to_proto())
+            
+            # command = RobotCommandBuilder.build_synchro_command(arm_command)
 
-            command = RobotCommandBuilder.build_synchro_command(gaze_command)
-
-            robot.logger.info("Requesting gaze.")
-            gaze_command_id = command_client.robot_command(command)
+            # robot.logger.info("Requesting gaze.")
+            gaze_command_id = command_client.robot_command(arm_command)
 
             block_until_arm_arrives(command_client, gaze_command_id, 20.0)
             time.sleep(3)
@@ -437,4 +409,4 @@ if __name__ == "__main__":
 
         blocking_stand(command_client)
         time.sleep(0.35)
-        place_piece(robot, 525)
+        place_piece(robot, 521)

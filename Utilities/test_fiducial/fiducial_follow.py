@@ -195,11 +195,12 @@ class FollowFiducial(object):
                 print("Vision Tform Fiducial:")
                 print(vision_tform_fiducial)
                 
+                
                 robot_rt_world = get_vision_tform_body(self.robot_state.kinematic_state.transforms_snapshot)
                 print("Robot RT world:")
                 print(robot_rt_world)
 
-                robot_world_coordinates = get_a_tform_b(robot_rt_world, VISION_FRAME_NAME, "Spot").to_proto()
+                robot_world_coordinates = get_a_tform_b(self.robot_state.kinematic_state.transforms_snapshot, VISION_FRAME_NAME, fiducial.apriltag_properties.frame_name_fiducial).to_proto()
                 print("Robot World Coordinates:")
                 print(robot_world_coordinates)
                 

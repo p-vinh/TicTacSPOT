@@ -119,6 +119,8 @@ def reachability_queries(config):
 
     # Create a lease client to allow us to control the robot.
     lease_client = robot.ensure_client(bosdyn.client.lease.LeaseClient.default_service_name)
+    ik_client = robot.ensure_client(InverseKinematicsClient.default_service_name)
+    
     with bosdyn.client.lease.LeaseKeepAlive(lease_client, must_acquire=True, return_at_exit=True):
         # Now, we are ready to power on the robot. This call will block until the power
         # is on. Commands would fail if this did not happen. We can also check that the robot is
@@ -182,7 +184,6 @@ def reachability_queries(config):
         block_until_arm_arrives(command_client, ready_command_id, 3.0)
 
         # Create a client for the IK service.
-        ik_client = robot.ensure_client(InverseKinematicsClient.default_service_name)
         ik_responses = []
         for i, task_T_desired_tool in enumerate(task_T_desired_tools):
             # Query the IK service for the reachability of the desired tool pose.

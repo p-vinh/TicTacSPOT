@@ -25,8 +25,8 @@ import bosdyn.client.estop
 
 #pylint: disable=no-member
 LOGGER = logging.getLogger()
-BOARD_REF = 535
-LIST_IDS = [521, 522, 523, 524, 525, 526, 527, 528, 529]
+BOARD_REF = 549
+LIST_IDS = [530, 531, 532, 533, 534, 535, 536, 537, 538]
 # Use this length to make sure we're commanding the head of the robot
 # to a position instead of the center.
 BODY_LENGTH = 1.1
@@ -249,9 +249,9 @@ def main():
         class_obj = follow.fiducial_follow(robot, options, 535)
         
         # We want to tilt until we see the whole board:
-        detectFiducial(expectedNumberOfFiducials, -0.2)
+        #detectFiducial(expectedNumberOfFiducials, -0.2)
         # 5. Place Piece
-        place.place_piece(robot, id)
+        #place.place_piece(robot, id)
         
         # 6. Backup From Reference Point
         # class_obj.backup_from_reference(2) # Backup 5 meters from reference point

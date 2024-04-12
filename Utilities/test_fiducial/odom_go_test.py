@@ -24,7 +24,7 @@ from bosdyn.api import geometry_pb2, image_pb2, trajectory_pb2, world_object_pb2
 from bosdyn.api.geometry_pb2 import SE2Velocity, SE2VelocityLimit, Vec2
 from bosdyn.api.spot import robot_command_pb2 as spot_command_pb2
 from bosdyn.client import ResponseError, RpcError, create_standard_sdk
-from bosdyn.client.frame_helpers import (BODY_FRAME_NAME, VISION_FRAME_NAME, ODOM_FRAME_NAME,get_a_tform_b,
+from bosdyn.client.frame_helpers import (GRAV_ALIGNED_BODY_FRAME_NAME, BODY_FRAME_NAME, VISION_FRAME_NAME, ODOM_FRAME_NAME,get_a_tform_b,
                                          get_vision_tform_body)
 from bosdyn.client.image import ImageClient, build_image_request
 from bosdyn.client.lease import LeaseClient
@@ -164,56 +164,18 @@ class FollowFiducial(object):
             # Delay grabbing image until spot is standing (or close enough to upright).
             time.sleep(.35)
 
-        while self._attempts <= self._max_attempts:
-            detected_fiducial = False
-            fiducial_rt_world = None
-            if self._use_world_object_service:
-                # Get the first fiducial object Spot detects with the world object service.
-                fiducial = self.get_fiducial_objects()
-                if fiducial is not None:
-                    vision_tform_fiducial = get_a_tform_b(
-                        fiducial.transforms_snapshot, VISION_FRAME_NAME,
-                        fiducial.apriltag_properties.frame_name_fiducial).to_proto()
-                    if vision_tform_fiducial is not None:
-                        detected_fiducial = True
-                        fiducial_rt_world = vision_tform_fiducial.position
-            else:
-                # Detect the april tag in the images from Spot using the apriltag library.
-                bboxes, source_name = self.image_to_bounding_box()
-                if bboxes:
-                    self._previous_source = source_name
-                    (tvec, _, source_name) = self.pixel_coords_to_camera_coords(
-                        bboxes, self._intrinsics, source_name)
-                    vision_tform_fiducial_position = self.compute_fiducial_in_world_frame(tvec)
-                    fiducial_rt_world = geometry_pb2.Vec3(x=vision_tform_fiducial_position[0],
-                                                          y=vision_tform_fiducial_position[1],
-                                                          z=vision_tform_fiducial_position[2])
-                    detected_fiducial = True
-
-            if detected_fiducial:
+            #Removed fiducial detection
+            robot_rt_world = get_vision_tform_body(self.robot_state.kinematic_state.transforms_snapshot)
+            print("Robot RT world:")
+            print(robot_rt_world)
+            robot_initial_world_coordinates = get_a_tform_b(self.robot_state.kinematic_state.transforms_snapshot, ODOM_FRAME_NAME, GRAV_ALIGNED_BODY_FRAME_NAME).to_proto()
+            print("Inital ODOM Frame Name:")
+            print(robot_initial_world_coordinates)
+            
+            time.sleep(1)
                 
-                print("Vision Tform Fiducial:")
-                print(vision_tform_fiducial)
-                
-                robot_rt_world = get_vision_tform_body(self.robot_state.kinematic_state.transforms_snapshot)
-                print("Robot RT world:")
-                print(robot_rt_world)
-
-                robot_initial_world_coordinates = get_a_tform_b(self.robot_state.kinematic_state.transforms_snapshot, VISION_FRAME_NAME, ODOM_FRAME_NAME).to_proto()
-                print("ODOM Frame Name:")
-                print(robot_initial_world_coordinates)
-                
-                self._current_tag_world_pose, self._angle_desired = self.offset_tag_pose(fiducial_rt_world, self._tag_offset)
-                print("Current Tag World Pose")
-                print(self._current_tag_world_pose)
-                
-                # Go to the tag and stop within a certain distance
-                # self.go_to_tag(fiducial_rt_world)
-                break
-            else:
-                print('No fiducials found')
-
-            self._attempts += 1  #increment attempts at finding a fiducial
+            # Go to the tag and stop within a certain distance
+            self.go_to_tag(robot_initial_world_coordinates.position)
 
         # Power off at the conclusion of the example.
         if self._powered_on:
@@ -415,7 +377,7 @@ class FollowFiducial(object):
 
     def offset_tag_pose(self, object_rt_world, dist_margin=1.0):
         """Offset the go-to location of the fiducial and compute the desired heading."""
-        robot_rt_world = get_vision_tform_body(self.robot_state.kinematic_state.transforms_snapshot)
+        robot_rt_world = get_a_tform_b(self.robot_state.kinematic_state.transforms_snapshot, GRAV_ALIGNED_BODY_FRAME_NAME, ODOM_FRAME_NAME)
         
         robot_to_object_ewrt_world = np.array(
             [object_rt_world.x - robot_rt_world.x, object_rt_world.y - robot_rt_world.y, 0])
