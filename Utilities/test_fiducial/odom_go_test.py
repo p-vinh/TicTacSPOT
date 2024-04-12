@@ -24,7 +24,7 @@ from bosdyn.api import geometry_pb2, image_pb2, trajectory_pb2, world_object_pb2
 from bosdyn.api.geometry_pb2 import SE2Velocity, SE2VelocityLimit, Vec2
 from bosdyn.api.spot import robot_command_pb2 as spot_command_pb2
 from bosdyn.client import ResponseError, RpcError, create_standard_sdk
-from bosdyn.client.frame_helpers import (BODY_FRAME_NAME, VISION_FRAME_NAME, get_a_tform_b,
+from bosdyn.client.frame_helpers import (BODY_FRAME_NAME, VISION_FRAME_NAME, ODOM_FRAME_NAME,get_a_tform_b,
                                          get_vision_tform_body)
 from bosdyn.client.image import ImageClient, build_image_request
 from bosdyn.client.lease import LeaseClient
@@ -44,7 +44,7 @@ BODY_LENGTH = 1.1
 
 
 class FollowFiducial(object):
-    """ THIS IS JUST TO TEST OUT FIDUCIAL DETECTION. Must return an array of ints of fiducial ids"""
+    """ Detect and follow a fiducial with Spot."""
 
     def __init__(self, robot, options):
         # Robot instance variable.
@@ -55,8 +55,15 @@ class FollowFiducial(object):
         self._robot_state_client = robot.ensure_client(RobotStateClient.default_service_name)
         self._robot_command_client = robot.ensure_client(RobotCommandClient.default_service_name)
         self._world_object_client = robot.ensure_client(WorldObjectClient.default_service_name)
-        
-    
+
+        # Stopping Distance (x,y) offset from the tag and angle offset from desired angle.
+        self._tag_offset = float(options.distance_margin) + BODY_LENGTH / 2.0  # meters
+
+        # Maximum speeds.
+        self._max_x_vel = 0.5
+        self._max_y_vel = 0.5
+        self._max_ang_vel = 1.0
+
         # Indicator if fiducial detection's should be from the world object service using
         # spot's perception system or detected with the apriltag library. If the software version
         # does not include the world object service, then default to april tag library.
@@ -64,10 +71,16 @@ class FollowFiducial(object):
                                           self.check_if_version_has_world_objects(self._robot_id))
 
         # Indicators for movement and image displays.
-        self._standup = True  # Stand up the robot
+        self._standup = True  # Stand up the robot.
+        self._movement_on = True  # Let the robot walk towards the fiducial.
+        self._limit_speed = options.limit_speed  # Limit the robot's walking speed.
         self._avoid_obstacles = options.avoid_obstacles  # Disable obstacle avoidance.
 
-     
+        # Epsilon distance between robot and desired go-to point.
+        self._x_eps = .05
+        self._y_eps = .05
+        self._angle_eps = .075
+
         # Indicator for if motor power is on.
         self._powered_on = False
 
@@ -75,7 +88,7 @@ class FollowFiducial(object):
         self._attempts = 0
 
         # Maximum amount of iterations before powering off the motors.
-        self._max_attempts = 0
+        self._max_attempts = 100000
 
         # Camera intrinsics for the current camera source being analyzed.
         self._intrinsics = None
@@ -155,19 +168,53 @@ class FollowFiducial(object):
             detected_fiducial = False
             fiducial_rt_world = None
             if self._use_world_object_service:
-                # Get the all fiducial objects
+                # Get the first fiducial object Spot detects with the world object service.
                 fiducial = self.get_fiducial_objects()
                 if fiducial is not None:
+                    vision_tform_fiducial = get_a_tform_b(
+                        fiducial.transforms_snapshot, VISION_FRAME_NAME,
+                        fiducial.apriltag_properties.frame_name_fiducial).to_proto()
+                    if vision_tform_fiducial is not None:
+                        detected_fiducial = True
+                        fiducial_rt_world = vision_tform_fiducial.position
+            else:
+                # Detect the april tag in the images from Spot using the apriltag library.
+                bboxes, source_name = self.image_to_bounding_box()
+                if bboxes:
+                    self._previous_source = source_name
+                    (tvec, _, source_name) = self.pixel_coords_to_camera_coords(
+                        bboxes, self._intrinsics, source_name)
+                    vision_tform_fiducial_position = self.compute_fiducial_in_world_frame(tvec)
+                    fiducial_rt_world = geometry_pb2.Vec3(x=vision_tform_fiducial_position[0],
+                                                          y=vision_tform_fiducial_position[1],
+                                                          z=vision_tform_fiducial_position[2])
                     detected_fiducial = True
 
             if detected_fiducial:
-                print(fiducial)
+                
+                print("Vision Tform Fiducial:")
+                print(vision_tform_fiducial)
+                
+                robot_rt_world = get_vision_tform_body(self.robot_state.kinematic_state.transforms_snapshot)
+                print("Robot RT world:")
+                print(robot_rt_world)
+
+                robot_initial_world_coordinates = get_a_tform_b(self.robot_state.kinematic_state.transforms_snapshot, VISION_FRAME_NAME, ODOM_FRAME_NAME).to_proto()
+                print("ODOM Frame Name:")
+                print(robot_initial_world_coordinates)
+                
+                self._current_tag_world_pose, self._angle_desired = self.offset_tag_pose(fiducial_rt_world, self._tag_offset)
+                print("Current Tag World Pose")
+                print(self._current_tag_world_pose)
+                
+                # Go to the tag and stop within a certain distance
+                # self.go_to_tag(fiducial_rt_world)
+                break
             else:
                 print('No fiducials found')
 
             self._attempts += 1  #increment attempts at finding a fiducial
 
-        
         # Power off at the conclusion of the example.
         if self._powered_on:
             self.power_off()
@@ -179,15 +226,11 @@ class FollowFiducial(object):
         fiducial_objects = self._world_object_client.list_world_objects(
             object_type=request_fiducials).world_objects
         if len(fiducial_objects) > 0:
-            # Return all fiducial objects it sees
-            ids = set()
-            for fiducial in fiducial_objects:
-                ids.add(fiducial.apriltag_properties.tag_id)
-            return ids
+            # Return the first detected fiducial.
+            return fiducial_objects[0]
         # Return none if no fiducials are found.
         return None
 
-    #-----------------------------------------------------------------------------------------------------------------------------------------------------
     def power_on(self):
         """Power on the robot."""
         self._robot.power_on()
@@ -241,6 +284,27 @@ class FollowFiducial(object):
                 print(f'Failed to find bounding box for {source_name}')
         return [], None
 
+    def detect_fiducial_in_image(self, image, dim, source_name):
+        """Detect the fiducial within a single image and return its bounding box."""
+        image_grey = np.array(
+            Image.frombytes('P', (int(dim[0]), int(dim[1])), data=image.data, decoder_name='raw'))
+
+        #Rotate each image such that it is upright
+        image_grey = self.rotate_image(image_grey, source_name)
+
+        #Make the image greyscale to use bounding box detections
+        detector = apriltag(family='tag36h11')
+        detections = detector.detect(image_grey)
+
+        bboxes = []
+        for i in range(len(detections)):
+            # Draw the bounding box detection in the image.
+            bbox = detections[i]['lb-rb-rt-lt']
+            cv2.polylines(image_grey, [np.int32(bbox)], True, (0, 0, 0), 2)
+            bboxes.append(bbox)
+
+        self._image[source_name] = image_grey
+        return bboxes
 
     def bbox_to_image_object_pts(self, bbox):
         """Determine the object points and image points for the bounding box.
@@ -302,6 +366,111 @@ class FollowFiducial(object):
         fiducial_rt_world = self._body_tform_world.inverse().transform_point(
             body_tform_fiducial[0], body_tform_fiducial[1], body_tform_fiducial[2])
         return fiducial_rt_world
+
+    def go_to_tag(self, fiducial_rt_world):
+        """Use the position of the april tag in vision world frame and command the robot."""
+        # Compute the go-to point (offset by .5m from the fiducial position) and the heading at
+        # this point.
+        self._current_tag_world_pose, self._angle_desired = self.offset_tag_pose(
+            fiducial_rt_world, self._tag_offset)
+
+        #Command the robot to go to the tag in kinematic odometry frame
+        # BODY_FRAME was changed to VISION
+        mobility_params = self.set_mobility_params()
+        tag_cmd = RobotCommandBuilder.synchro_se2_trajectory_point_command(
+            goal_x=self._current_tag_world_pose[0], goal_y=self._current_tag_world_pose[1],
+            goal_heading=self._angle_desired, frame_name=VISION_FRAME_NAME, params=mobility_params,
+            body_height=0.0, locomotion_hint=spot_command_pb2.HINT_AUTO)
+        end_time = 30.0
+        if self._movement_on and self._powered_on:
+            #Issue the command to the robot
+            self._robot_command_client.robot_command(lease=None, command=tag_cmd,
+                                                     end_time_secs=time.time() + end_time)
+            # #Feedback to check and wait until the robot is in the desired position or timeout
+            start_time = time.time()
+            current_time = time.time()
+            while (not self.final_state() and current_time - start_time < end_time):
+                time.sleep(.25)
+                current_time = time.time()
+        return
+
+    def final_state(self):
+        """Check if the current robot state is within range of the fiducial position."""
+        robot_state = get_vision_tform_body(self.robot_state.kinematic_state.transforms_snapshot)
+        robot_angle = robot_state.rot.to_yaw()
+        if self._current_tag_world_pose.size != 0:
+            x_dist = abs(self._current_tag_world_pose[0] - robot_state.x)
+            y_dist = abs(self._current_tag_world_pose[1] - robot_state.y)
+            angle = abs(self._angle_desired - robot_angle)
+            if ((x_dist < self._x_eps) and (y_dist < self._y_eps) and (angle < self._angle_eps)):
+                return True
+        return False
+
+    def get_desired_angle(self, xhat):
+        """Compute heading based on the vector from robot to object."""
+        zhat = [0.0, 0.0, 1.0]
+        yhat = np.cross(zhat, xhat)
+        mat = np.array([xhat, yhat, zhat]).transpose()
+        return Quat.from_matrix(mat).to_yaw()
+
+    def offset_tag_pose(self, object_rt_world, dist_margin=1.0):
+        """Offset the go-to location of the fiducial and compute the desired heading."""
+        robot_rt_world = get_vision_tform_body(self.robot_state.kinematic_state.transforms_snapshot)
+        
+        robot_to_object_ewrt_world = np.array(
+            [object_rt_world.x - robot_rt_world.x, object_rt_world.y - robot_rt_world.y, 0])
+        
+        robot_to_object_ewrt_world_norm = robot_to_object_ewrt_world / np.linalg.norm(
+            robot_to_object_ewrt_world)
+        
+        heading = self.get_desired_angle(robot_to_object_ewrt_world_norm)
+        
+        goto_rt_world = np.array([
+            object_rt_world.x - robot_to_object_ewrt_world_norm[0] * dist_margin,
+            object_rt_world.y - robot_to_object_ewrt_world_norm[1] * dist_margin
+        ])
+        
+        print("goto_rt_world", goto_rt_world)
+        print("heading: ", heading)
+        return goto_rt_world, heading
+
+    def set_mobility_params(self):
+        """Set robot mobility params to disable obstacle avoidance."""
+        obstacles = spot_command_pb2.ObstacleParams(disable_vision_body_obstacle_avoidance=True,
+                                                    disable_vision_foot_obstacle_avoidance=True,
+                                                    disable_vision_foot_constraint_avoidance=True,
+                                                    obstacle_avoidance_padding=.001)
+        body_control = self.set_default_body_control()
+        if self._limit_speed:
+            speed_limit = SE2VelocityLimit(max_vel=SE2Velocity(
+                linear=Vec2(x=self._max_x_vel, y=self._max_y_vel), angular=self._max_ang_vel))
+            if not self._avoid_obstacles:
+                mobility_params = spot_command_pb2.MobilityParams(
+                    obstacle_params=obstacles, vel_limit=speed_limit, body_control=body_control,
+                    locomotion_hint=spot_command_pb2.HINT_AUTO)
+            else:
+                mobility_params = spot_command_pb2.MobilityParams(
+                    vel_limit=speed_limit, body_control=body_control,
+                    locomotion_hint=spot_command_pb2.HINT_AUTO)
+        elif not self._avoid_obstacles:
+            mobility_params = spot_command_pb2.MobilityParams(
+                obstacle_params=obstacles, body_control=body_control,
+                locomotion_hint=spot_command_pb2.HINT_AUTO)
+        else:
+            #When set to none, RobotCommandBuilder populates with good default values
+            mobility_params = None
+        return mobility_params
+
+    @staticmethod
+    def set_default_body_control():
+        """Set default body control params to current body position"""
+        footprint_R_body = geometry.EulerZXY()
+        position = geometry_pb2.Vec3(x=0.0, y=0.0, z=0.0)
+        rotation = footprint_R_body.to_quaternion()
+        pose = geometry_pb2.SE3Pose(position=position, rotation=rotation)
+        point = trajectory_pb2.SE3TrajectoryPoint(pose=pose)
+        traj = trajectory_pb2.SE3Trajectory(points=[point])
+        return spot_command_pb2.BodyControlParams(base_offset_rt_footprint=traj)
 
     @staticmethod
     def rotate_image(image, source_name):
@@ -432,7 +601,14 @@ def main():
                                             'such as the estop SDK example, to configure E-Stop.'
 
             fiducial_follower = FollowFiducial(robot, options)
+            time.sleep(.1)
+            if not options.use_world_objects and str.lower(sys.platform) != 'darwin':
+                # Display the detected bounding boxes on the images when using the april tag library.
+                # This is disabled for MacOS-X operating systems.
+                image_viewer = DisplayImagesAsync(fiducial_follower)
+                image_viewer.start()
             lease_client = robot.ensure_client(LeaseClient.default_service_name)
+            lease_client.take()
             with bosdyn.client.lease.LeaseKeepAlive(lease_client, must_acquire=True,
                                                     return_at_exit=True):
                 fiducial_follower.start()
