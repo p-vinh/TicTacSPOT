@@ -79,7 +79,7 @@ class FollowFiducial(object):
         # Epsilon distance between robot and desired go-to point.
         self._x_eps = .05
         self._y_eps = .05
-        self._angle_eps = .0075
+        self._angle_eps = .075
 
         # Indicator for if motor power is on.
         self._powered_on = False
@@ -209,10 +209,8 @@ class FollowFiducial(object):
         fiducial_objects = self._world_object_client.list_world_objects(
             object_type=request_fiducials).world_objects
         if len(fiducial_objects) > 0:
-            for fiducial in fiducial_objects:
-                if fiducial.apriltag_properties.tag_id == 527:
-                    # Return the first detected fiducial.
-                    return fiducial
+            # Return the first detected fiducial.
+            return fiducial_objects[0]
         # Return none if no fiducials are found.
         return None
 
@@ -365,7 +363,7 @@ class FollowFiducial(object):
             goal_x=self._current_tag_world_pose[0], goal_y=self._current_tag_world_pose[1],
             goal_heading=self._angle_desired, frame_name=VISION_FRAME_NAME, params=mobility_params,
             body_height=0.0, locomotion_hint=spot_command_pb2.HINT_AUTO)
-        end_time = 30.0
+        end_time = 5.0
         if self._movement_on and self._powered_on:
             #Issue the command to the robot
             self._robot_command_client.robot_command(lease=None, command=tag_cmd,

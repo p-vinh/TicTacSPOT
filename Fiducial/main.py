@@ -209,11 +209,11 @@ def main():
         board.changeInitialState(initial_values)
         board.printBoard()
         
-        #Get Fiducials
-        # while loop insert here <----------Game Loop starts
+        # #Get Fiducials
+        # # while loop insert here <----------Game Loop starts
 
-        #1. Find Fidicials and Update Board ----> Player move
-        #Have Spot twist up to see all fiducials        
+        # #1. Find Fidicials and Update Board ----> Player move
+        # #Have Spot twist up to see all fiducials        
         ids = detectFiducial(expectedNumberOfFiducials, -0.2) #list of id and postion (aka coord) pairs
         board.updateBoard(ids, player) #updates board
         
@@ -227,14 +227,14 @@ def main():
         print("Total Pieces on board: ", board.getTotalPieces())
         print("------------------------------------------")
 
-        #Have SPOT go back to stand position
+        # #Have SPOT go back to stand position
         goBackToSame =  bosdyn.geometry.EulerZXY(yaw=0.0, roll=0.0, pitch=0.0)
         cmd2 = RobotCommandBuilder.synchro_stand_command(footprint_R_body=goBackToSame)
         command_client.robot_command(cmd2)
         robot.logger.info('Robot is back to stand position')
         time.sleep(3)
         
-        #2. Minimax
+        # #2. Minimax
         move, id = ttt.minimax(board.getBoardState())
         
         #3. Pick Piece
@@ -245,11 +245,13 @@ def main():
         # 4. Set up Position
         print("Placing Piece....")
         
-        print(move, id)
-        class_obj = follow.fiducial_follow(robot, options, 535)
+        # print(move, id)
+        class_obj = follow.fiducial_follow(robot, options, 530)
         
         # We want to tilt until we see the whole board:
-        #detectFiducial(expectedNumberOfFiducials, -0.2)
+        
+        detectFiducial(expectedNumberOfFiducials, -0.2)
+        
         # 5. Place Piece
         #place.place_piece(robot, id)
         
@@ -271,7 +273,7 @@ def main():
             # break
         
         # Wait for player to place their piece
-        expectedNumberOfFiducials -= 1   
+        # expectedNumberOfFiducials -= 1   
         time.sleep(10)         
             
 

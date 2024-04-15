@@ -206,7 +206,7 @@ def main(argv):
                 # Capture an image and run ML on it.
                 dogtoy, image, vision_tform_dogtoy = get_obj_and_img(
                     network_compute_client, options.ml_service, options.model,
-                    options.confidence_dogtoy, kImageSources, 'dogtoy')
+                    options.confidence_dogtoy, kImageSources, 'X')
 
                 if dogtoy is None:
                     # Didn't find anything, keep searching.

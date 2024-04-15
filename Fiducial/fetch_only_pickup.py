@@ -23,6 +23,10 @@ from bosdyn.client.network_compute_bridge_client import NetworkComputeBridgeClie
 from bosdyn.client.robot_command import (RobotCommandBuilder, RobotCommandClient,
                                          block_for_trajectory_cmd, block_until_arm_arrives)
 from bosdyn.client.robot_state import RobotStateClient
+from bosdyn.client.world_object import WorldObjectClient
+from bosdyn.client.lease import LeaseClient, LeaseKeepAlive
+
+from dotenv import load_dotenv
 
 kImageSources = [
     'frontleft_fisheye_image', 'frontright_fisheye_image', 'left_fisheye_image',
@@ -437,41 +441,44 @@ def wait_until_grasp_state_updates(grasp_override_command, robot_state_client):
         time.sleep(0.1)
 
 
-# if __name__ == "__main__":
-#     load_dotenv()
-#     #==================================Parse args===================================================
-#     parser = argparse.ArgumentParser()
-#     bosdyn.client.util.add_base_arguments(parser)
-#     parser.add_argument('-s', '--ml-service',
-#                         help='Service name of external machine learning server.', required=True)
-#     parser.add_argument('-m', '--model', help='Model name running on the external server.',
-#                         required=True)
-#     parser.add_argument('-c', '--confidence-piece',
-#                         help='Minimum confidence to return an object for the dogoy (0.0 to 1.0)',
-#                         default=0.5, type=float)
-#     parser.add_argument('-d', '--distance-margin', default=.5,
-#                         help='Distance [meters] that the robot should stop from the fiducial.')
-#     parser.add_argument('--limit-speed', default=True, type=lambda x: (str(x).lower() == 'true'),
-#                         help='If the robot should limit its maximum speed.')
-#     parser.add_argument('--avoid-obstacles', default=False, type=lambda x:
-#                         (str(x).lower() == 'true'),
-#                         help='If the robot should have obstacle avoidance enabled.')
+if __name__ == "__main__":
+    load_dotenv()
+    #==================================Parse args===================================================
+    parser = argparse.ArgumentParser()
+    bosdyn.client.util.add_base_arguments(parser)
+    parser.add_argument('-s', '--ml-service',
+                        help='Service name of external machine learning server.', required=True)
+    parser.add_argument('-m', '--model', help='Model name running on the external server.',
+                        required=True)
+    parser.add_argument('-c', '--confidence-piece',
+                        help='Minimum confidence to return an object for the dogoy (0.0 to 1.0)',
+                        default=0.5, type=float)
+    parser.add_argument('-d', '--distance-margin', default=.5,
+                        help='Distance [meters] that the robot should stop from the fiducial.')
+    parser.add_argument('--limit-speed', default=True, type=lambda x: (str(x).lower() == 'true'),
+                        help='If the robot should limit its maximum speed.')
+    parser.add_argument('--avoid-obstacles', default=False, type=lambda x:
+                        (str(x).lower() == 'true'),
+                        help='If the robot should have obstacle avoidance enabled.')
     
-#     options = parser.parse_args()
+    options = parser.parse_args()
     
-#     sdk = bosdyn.client.create_standard_sdk('TicTacSPOT')
-#     sdk.register_service_client(NetworkComputeBridgeClient)
-#     robot = sdk.create_robot(options.hostname)
+    sdk = bosdyn.client.create_standard_sdk('TicTacSPOT')
+    sdk.register_service_client(NetworkComputeBridgeClient)
+    robot = sdk.create_robot(options.hostname)
     
     
-#     bosdyn.client.util.authenticate(robot)
-#     robot.time_sync.wait_for_sync()
+    bosdyn.client.util.authenticate(robot)
+    robot.time_sync.wait_for_sync()
 
-#     network_compute_client = robot.ensure_client(NetworkComputeBridgeClient.default_service_name)
-#     robot_state_client = robot.ensure_client(RobotStateClient.default_service_name)
-#     command_client = robot.ensure_client(RobotCommandClient.default_service_name)
-#     lease_client = robot.ensure_client(LeaseClient.default_service_name)
-#     manipulation_api_client = robot.ensure_client(ManipulationApiClient.default_service_name)
-#     _world_object_client = robot.ensure_client(WorldObjectClient.default_service_name)
+    network_compute_client = robot.ensure_client(NetworkComputeBridgeClient.default_service_name)
+    robot_state_client = robot.ensure_client(RobotStateClient.default_service_name)
+    command_client = robot.ensure_client(RobotCommandClient.default_service_name)
+    lease_client = robot.ensure_client(LeaseClient.default_service_name)
+    manipulation_api_client = robot.ensure_client(ManipulationApiClient.default_service_name)
+    _world_object_client = robot.ensure_client(WorldObjectClient.default_service_name)
     
-#     with bosdyn.client.lease.LeaseKeepAlive(lease_client, must_acquire=True, return_at_exit=True):
+    lease_client.take()
+    with bosdyn.client.lease.LeaseKeepAlive(lease_client, must_acquire=True, return_at_exit=True):
+        pick_up(options, robot)
+        

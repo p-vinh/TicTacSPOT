@@ -200,6 +200,7 @@ def block_for_trajectory_cmd(command_client, cmd_id, timeout_sec=None, verbose=F
 
 
 def main(argv):
+    
     parser = argparse.ArgumentParser()
     bosdyn.client.util.add_base_arguments(parser)
     parser.add_argument('-s', '--ml-service',

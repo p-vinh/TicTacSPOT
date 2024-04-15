@@ -35,6 +35,8 @@ from bosdyn.client.robot_id import RobotIdClient, version_tuple
 from bosdyn.client.robot_state import RobotStateClient
 from bosdyn.client.world_object import WorldObjectClient
 
+import fiducial_follow as follow
+
 #pylint: disable=no-member
 LOGGER = logging.getLogger()
 
@@ -152,7 +154,7 @@ class FollowFiducial(object):
         # World object service was released in spot-sdk version 1.2.0
         return version_tuple(robot_id.software_release.version) >= (1, 2, 0)
 
-    def start(self):
+    def start(self,robot,options):
         """Claim lease of robot and start the fiducial follower."""
         self._robot.time_sync.wait_for_sync()
 
@@ -165,18 +167,42 @@ class FollowFiducial(object):
             time.sleep(.35)
 
             #Removed fiducial detection
-            robot_rt_world = get_vision_tform_body(self.robot_state.kinematic_state.transforms_snapshot)
-            print("Robot RT world:")
-            print(robot_rt_world)
-            robot_initial_world_coordinates = get_a_tform_b(self.robot_state.kinematic_state.transforms_snapshot, ODOM_FRAME_NAME, GRAV_ALIGNED_BODY_FRAME_NAME).to_proto()
-            print("Inital ODOM Frame Name:")
-            print(robot_initial_world_coordinates)
+            robot_initial_coords = get_vision_tform_body(self.robot_state.kinematic_state.transforms_snapshot)
+            print("Robot Initial Coords:")
+            print(robot_initial_coords.position)
+            
+            #Move forward a bit
+            mobility_params = self.set_mobility_params()
+            tag_cmd = RobotCommandBuilder.synchro_se2_trajectory_point_command(
+                goal_x=robot_initial_coords.position.x+1, goal_y=robot_initial_coords.position.y + 0.5,
+                goal_heading=0, frame_name=VISION_FRAME_NAME, params=mobility_params,
+                body_height=0.0, locomotion_hint=spot_command_pb2.HINT_AUTO)
+            
+            end_time = 5.0
+            if self._movement_on:
+            #Issue the command to the robot
+                self._robot_command_client.robot_command(lease=None, command=tag_cmd,
+                                                    end_time_secs=time.time() + end_time)
+                # #Feedback to check and wait until the robot is in the desired position or timeout
+                start_time = time.time()
+                current_time = time.time()
+                while (not self.final_state() and current_time - start_time < end_time):
+                    time.sleep(.25)
+                    current_time = time.time()
+            
+            #Print out new coordinates
+            robot_new_coords = get_vision_tform_body(self.robot_state.kinematic_state.transforms_snapshot)
+            print("Robot New Coords:")
+            print(robot_new_coords)
             
             time.sleep(1)
+            
+            self.go_to(robot_initial_coords.position)
+            
+            class_obj = follow.fiducial_follow(robot, options, 530)
+            
+            
                 
-            # Go to the tag and stop within a certain distance
-            self.go_to_tag(robot_initial_world_coordinates.position)
-
         # Power off at the conclusion of the example.
         if self._powered_on:
             self.power_off()
@@ -329,12 +355,14 @@ class FollowFiducial(object):
             body_tform_fiducial[0], body_tform_fiducial[1], body_tform_fiducial[2])
         return fiducial_rt_world
 
-    def go_to_tag(self, fiducial_rt_world):
+    def go_to(self, fiducial_rt_world):
         """Use the position of the april tag in vision world frame and command the robot."""
         # Compute the go-to point (offset by .5m from the fiducial position) and the heading at
         # this point.
+        
+        #Changed offset to 0 since we want them directly on the same position 
         self._current_tag_world_pose, self._angle_desired = self.offset_tag_pose(
-            fiducial_rt_world, self._tag_offset)
+            fiducial_rt_world, 0)
 
         #Command the robot to go to the tag in kinematic odometry frame
         # BODY_FRAME was changed to VISION
@@ -343,7 +371,9 @@ class FollowFiducial(object):
             goal_x=self._current_tag_world_pose[0], goal_y=self._current_tag_world_pose[1],
             goal_heading=self._angle_desired, frame_name=VISION_FRAME_NAME, params=mobility_params,
             body_height=0.0, locomotion_hint=spot_command_pb2.HINT_AUTO)
-        end_time = 30.0
+        
+        end_time = 5.0 #change this to like a reasonable time
+        
         if self._movement_on and self._powered_on:
             #Issue the command to the robot
             self._robot_command_client.robot_command(lease=None, command=tag_cmd,
@@ -375,7 +405,7 @@ class FollowFiducial(object):
         mat = np.array([xhat, yhat, zhat]).transpose()
         return Quat.from_matrix(mat).to_yaw()
 
-    def offset_tag_pose(self, object_rt_world, dist_margin=1.0):
+    def offset_tag_pose(self, object_rt_world, dist_margin=0): #No offset since we want SPOT to be directly on their original place
         """Offset the go-to location of the fiducial and compute the desired heading."""
         robot_rt_world = get_a_tform_b(self.robot_state.kinematic_state.transforms_snapshot, GRAV_ALIGNED_BODY_FRAME_NAME, ODOM_FRAME_NAME)
         
@@ -573,7 +603,7 @@ def main():
             lease_client.take()
             with bosdyn.client.lease.LeaseKeepAlive(lease_client, must_acquire=True,
                                                     return_at_exit=True):
-                fiducial_follower.start()
+                fiducial_follower.start(robot,options)
     except RpcError as err:
         LOGGER.error('Failed to communicate with robot: %s', err)
     finally:
