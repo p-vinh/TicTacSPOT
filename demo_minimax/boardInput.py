@@ -53,8 +53,7 @@ class BoardInput:
 
     def spotUpdateBoard(self, move):
         print("SPOT Turn: Recording Move")
-        newList = list(move)
-        self.boardState[newList[0]][newList[1]] = 'X'
+        self.boardState[move[0]][move[1]] = 'X'
         print(self.boardState)
         print(self.previousBoard)
 
