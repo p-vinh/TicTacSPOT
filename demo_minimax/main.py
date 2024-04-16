@@ -174,13 +174,17 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
-            if event.type == pygame.MOUSEBUTTONDOWN and o_turn and not x_turn:
+            if event.type == pygame.MOUSEBUTTONDOWN and o_turn:
                 if has_won(game_array) or has_drawn(game_array):
                     run = False
+                    print("Restarting game.....")
+                    board = bi.BoardInput()
+                    board.changeInitialState(LIST_IDS)
                 else:
                     click(game_array)
                     #-------------update board--------------------
                     board.addOPiece()
+                    
                     detectFiducial = []
                     for i in range(len(game_array)):
                         for j in range(len(game_array[i])):
@@ -189,17 +193,21 @@ def main():
                                 detectFiducial.append(tempArr[i][j])
                     
                     board.updateBoard(detectFiducial, player) #updates board
-                    player = ttt.X
 
                     print("----------Player Turn-----------")
                     board.printBoard()
                     board.updateTotalPieces()
                     print("Number of X pieces:", board.getXPieces())
-                    print("Number of O pieces:", board.getOPieces())  
+                    print("Number of O pieces:", board.getOPieces())
+                    
+                    player = ttt.X  
             
             if x_turn:  # If it's X's turn, aka SPOT's turn
                 if has_won(game_array) or has_drawn(game_array):
                     run = False
+                    print("Restarting game.....")
+                    board = bi.BoardInput()
+                    board.changeInitialState(LIST_IDS)
                 else:
                     move, id = ttt.minimax(board.getBoardState())
                     board.spotUpdateBoard(move)
@@ -212,7 +220,6 @@ def main():
                     x, y, char, can_play = game_array[i][j]
                     images.append((x, y, X_IMAGE))
                     game_array[i][j] = (x, y, 'x', False)
-                    player = ttt.O
 
                     print("----------SPOT Turn-----------")
                     print("Spot's chosen move:", move)
@@ -220,6 +227,8 @@ def main():
                     board.updateTotalPieces()
                     print("Number of X pieces:", board.getXPieces())
                     print("Number of O pieces:", board.getOPieces())
+
+                    player = ttt.O
 
         render()
 

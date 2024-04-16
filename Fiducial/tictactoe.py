@@ -15,10 +15,10 @@ def initial_state():
 
 # Returns player who has the next turn on a board
 def player(board):
-    X_count = sum(x.count(X) for x in board)
-    O_count = sum(x.count(O) for x in board)
+    X_count = sum(x.count('X') for x in board)
+    O_count = sum(x.count('O') for x in board)
       
-    return X if X_count <= O_count else O
+    return O if X_count == O_count else X
 
 # Returns set of all possible actions (i, j) available on the board
 def actions(board):
