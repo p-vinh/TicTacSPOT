@@ -57,9 +57,9 @@ class FollowFiducial(object):
         self._tag_offset = float(options.distance_margin) + BODY_LENGTH / 2.0  # meters
 
         # Maximum speeds.
-        self._max_x_vel = 0.3 # Default: 0.5
-        self._max_y_vel = 0.3 # Default: 0.5
-        self._max_ang_vel = 0.5 # Default: 1.0
+        self._max_x_vel = 0.2 # Default: 0.5
+        self._max_y_vel = 0.2 # Default: 0.5
+        self._max_ang_vel = 0.3 # Default: 1.0
 
         # Indicator if fiducial detection's should be from the world object service using
         # spot's perception system or detected with the apriltag library. If the software version
@@ -239,7 +239,7 @@ class FollowFiducial(object):
 
             # print(board_properties.transforms_snapshot.child_to_parent_edge_map['vision'].parent_tform_child.rotation)
         # print(board_properties)
-        return
+        #return
     
 
     def final_state(self):

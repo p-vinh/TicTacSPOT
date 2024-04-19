@@ -2,21 +2,27 @@
 import argparse
 import tictactoe as ttt
 import boardInput as bi
+import goToInitial as goTo
 import logging
 from dotenv import load_dotenv
 import time
+import numpy as np
+
 import bosdyn.client
 import bosdyn.client.util
 import bosdyn.geometry
 from bosdyn.api import world_object_pb2, estop_pb2
-from bosdyn.client.frame_helpers import (BODY_FRAME_NAME, VISION_FRAME_NAME, get_a_tform_b,
+from bosdyn.client.frame_helpers import (GRAV_ALIGNED_BODY_FRAME_NAME,BODY_FRAME_NAME, ODOM_FRAME_NAME, VISION_FRAME_NAME, get_a_tform_b,
                                          get_vision_tform_body)
+from bosdyn.api.spot import robot_command_pb2 as spot_command_pb2
+from bosdyn.api.geometry_pb2 import SE2Velocity, SE2VelocityLimit, Vec2
 from bosdyn.client.lease import LeaseClient
 from bosdyn.client.robot_command import RobotCommandBuilder, RobotCommandClient, blocking_stand
 from bosdyn.client.robot_id import version_tuple
 from bosdyn.client.world_object import WorldObjectClient
 from bosdyn.client.network_compute_bridge_client import NetworkComputeBridgeClient
 from bosdyn.client.estop import EstopClient
+from bosdyn.client.robot_state import RobotStateClient
 
 import fetch_only_pickup as fetch
 import fiducial_follow as follow
@@ -173,6 +179,7 @@ def main():
     command_client = robot.ensure_client(RobotCommandClient.default_service_name)
     lease_client = robot.ensure_client(LeaseClient.default_service_name)
     _world_object_client = robot.ensure_client(WorldObjectClient.default_service_name)
+    _robot_state_client = robot.ensure_client(RobotStateClient.default_service_name)
     
     lease_client.take()
     # ===============================Get Lease===========================================
@@ -209,6 +216,12 @@ def main():
         board.changeInitialState(initial_values)
         board.printBoard()
         
+         
+        #Obtain initial coordinates - these hold SPOTS initial position when booting up
+        robot_initial_coords = get_vision_tform_body(_robot_state_client.get_robot_state().kinematic_state.transforms_snapshot)
+        print("Robot Initial Coords:")
+        print(robot_initial_coords.position)
+        
         # #Get Fiducials
         # # while loop insert here <----------Game Loop starts
 
@@ -241,22 +254,28 @@ def main():
         robot.logger.info('Sending Robot Pickup Request')
         fetch.pick_up(options, robot)
         time.sleep(1) # Wait for pickup to finish
+        print(move, id)
         
         # 4. Set up Position
         print("Placing Piece....")
         
-        # print(move, id)
-        class_obj = follow.fiducial_follow(robot, options, 530)
+        # Go back to original position
+        obj = goTo.headToNewCoords(robot, options, robot_initial_coords)
+        
+        time.sleep(1)
+        
+        #Go to Fiducial
+        class_obj = follow.fiducial_follow(robot, options, BOARD_REF)
         
         # We want to tilt until we see the whole board:
         
         detectFiducial(expectedNumberOfFiducials, -0.2)
         
         # 5. Place Piece
-        #place.place_piece(robot, id)
+        place.place_piece(robot, id)
         
         # 6. Backup From Reference Point
-        # class_obj.backup_from_reference(2) # Backup 5 meters from reference point
+        #class_obj.backup_from_reference(2) # Backup 5 meters from reference point
         
         
         # 7. Gameover?
