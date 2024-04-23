@@ -266,9 +266,9 @@ class FollowFiducial(object):
     def get_desired_angle(self, vhat):
         """Compute heading based on the vector from robot to object."""
         # zhat = [0.0, 0.0, 1.0]
-        # fhat = self.get_fiducial_orientation()
-        # yhat = np.cross(zhat, fhat) # Gets the cross product based on the given vector
-        # mat = np.array([fhat, yhat, zhat]).transpose()
+        # # fhat = self.get_fiducial_orientation()
+        # yhat = np.cross(zhat, vhat) # Gets the cross product based on the given vector
+        # mat = np.array([vhat, yhat, zhat]).transpose()
         # return Quat.from_matrix(mat).to_yaw()
 
         # Returns the angle between the robot and the object in radians

@@ -7,11 +7,8 @@
 """Tutorial to show how to use Spot's arm.
 """
 import argparse
-import sys
 import time
-import math
-
-from google.protobuf import wrappers_pb2
+import fiducial_follow as follow
 
 import bosdyn.client
 import bosdyn.client.estop
@@ -19,11 +16,7 @@ import bosdyn.client.lease
 import bosdyn.client.util
 import bosdyn.client.math_helpers
 from bosdyn.api import (
-    arm_command_pb2,
-    robot_command_pb2,
-    synchronized_command_pb2,
     world_object_pb2,
-    geometry_pb2
 )
 from bosdyn.client.lease import LeaseClient
 from bosdyn.client.frame_helpers import (
@@ -32,12 +25,8 @@ from bosdyn.client.frame_helpers import (
     BODY_FRAME_NAME,
     HAND_FRAME_NAME,
     get_vision_tform_body,
-    GRAV_ALIGNED_BODY_FRAME_NAME,
-    GROUND_PLANE_FRAME_NAME,
-    ODOM_FRAME_NAME
 )
 from bosdyn.client.world_object import WorldObjectClient
-from scipy.spatial.transform import Rotation as R
 
 from bosdyn.client.robot_command import (
     RobotCommandBuilder,
@@ -45,86 +34,15 @@ from bosdyn.client.robot_command import (
     block_until_arm_arrives,
     blocking_stand,
 )
-from bosdyn.util import duration_to_seconds
-from bosdyn.util import seconds_to_duration
 from bosdyn.api.spot import robot_command_pb2 as spot_command_pb2
-from bosdyn.client.math_helpers import Quat, SE3Pose
+from bosdyn.client.math_helpers import Quat
 from bosdyn.client.robot_state import RobotStateClient
 from dotenv import load_dotenv
 
-
-def make_robot_command(arm_joint_traj):
-    """Helper function to create a RobotCommand from an ArmJointTrajectory.
-    The returned command will be a SynchronizedCommand with an ArmJointMoveCommand
-    filled out to follow the passed in trajectory."""
-
-    joint_move_command = arm_command_pb2.ArmJointMoveCommand.Request(
-        trajectory=arm_joint_traj
-    )
-    arm_command = arm_command_pb2.ArmCommand.Request(
-        arm_joint_move_command=joint_move_command
-    )
-    sync_arm = synchronized_command_pb2.SynchronizedCommand.Request(
-        arm_command=arm_command
-    )
-    arm_sync_robot_cmd = robot_command_pb2.RobotCommand(synchronized_command=sync_arm)
-    return RobotCommandBuilder.build_synchro_command(arm_sync_robot_cmd)
-
-
-def print_feedback(feedback_resp, logger):
-    """Helper function to query for ArmJointMove feedback, and print it to the console.
-    Returns the time_to_goal value reported in the feedback"""
-    joint_move_feedback = (
-        feedback_resp.feedback.synchronized_feedback.arm_command_feedback.arm_joint_move_feedback
-    )
-    logger.info(f"  planner_status = {joint_move_feedback.planner_status}")
-    logger.info(
-        f"  time_to_goal = {duration_to_seconds(joint_move_feedback.time_to_goal):.2f} seconds."
-    )
-
-    # Query planned_points to determine target pose of arm
-    logger.info("  planned_points:")
-    for idx, points in enumerate(joint_move_feedback.planned_points):
-        pos = points.position
-        pos_str = (
-            f"sh0 = {pos.sh0.value:.3f}, sh1 = {pos.sh1.value:.3f}, el0 = {pos.el0.value:.3f}, "
-            f"el1 = {pos.el1.value:.3f}, wr0 = {pos.wr0.value:.3f}, wr1 = {pos.wr1.value:.3f}"
-        )
-        logger.info(f"    {idx}: {pos_str}")
-    return duration_to_seconds(joint_move_feedback.time_to_goal)
-
-
-def block_until_arm_arrives_with_prints(robot, command_client, cmd_id):
-    """Block until the arm arrives at the goal and print the distance remaining.
-    Note: a version of this function is available as a helper in robot_command
-    without the prints.
-    """
-    while True:
-        feedback_resp = command_client.robot_command_feedback(cmd_id)
-        measured_pos_distance_to_goal = (
-            feedback_resp.feedback.synchronized_feedback.arm_command_feedback.arm_cartesian_feedback.measured_pos_distance_to_goal
-        )
-        measured_rot_distance_to_goal = (
-            feedback_resp.feedback.synchronized_feedback.arm_command_feedback.arm_cartesian_feedback.measured_rot_distance_to_goal
-        )
-        robot.logger.info(
-            "Distance to go: %.2f meters, %.2f radians",
-            measured_pos_distance_to_goal,
-            measured_rot_distance_to_goal,
-        )
-
-        if (
-            feedback_resp.feedback.synchronized_feedback.arm_command_feedback.arm_cartesian_feedback.status
-            == arm_command_pb2.ArmCartesianCommand.Feedback.STATUS_TRAJECTORY_COMPLETE
-        ):
-            robot.logger.info("Move complete.")
-            break
-        time.sleep(0.1)
-
-
-def joint_move_example(robot, fid_id, command_client):
-    """A simple example of using the Boston Dynamics API to command Spot's arm to perform joint moves."""
-
+def place_piece(robot, fid_id):
+    robot.time_sync.wait_for_sync()
+    command_client = robot.ensure_client(RobotCommandClient.default_service_name)
+    
     def get_fiducial_objects():
         """Get all fiducials that Spot detects with its perception system."""
         # Get all fiducial objects (an object of a specific type).
@@ -143,290 +61,71 @@ def joint_move_example(robot, fid_id, command_client):
                     return fid
         return None
 
-    try:
-        robot_state = robot.ensure_client(RobotStateClient.default_service_name)
-        fiducial = get_fiducial_objects()
-        arm_command = None
-            
-        if fiducial is not None:
-            vision_tform_fiducial = get_a_tform_b(
-                fiducial.transforms_snapshot,
-                VISION_FRAME_NAME,
-                fiducial.apriltag_properties.frame_name_fiducial,
-            ).to_proto()
-
-            body_control = spot_command_pb2.BodyControlParams(
-                body_assist_for_manipulation=spot_command_pb2.BodyControlParams.
-                BodyAssistForManipulation(enable_hip_height_assist=True, enable_body_yaw_assist=True))
-            body_assist_enabled_stand_command = RobotCommandBuilder.synchro_stand_command(
-                params=spot_command_pb2.MobilityParams(body_control=body_control))
-
-            # Now, let's set our piece frame to be the tip of the robot's bottom jaw. Flip the
-            # orientation so that when the hand is pointed downwards, the piece's z-axis is
-            # pointed upward.
-            wrist_tform_tool = SE3Pose(x=0.25, y=0, z=0, rot=Quat(w=0.5, x=0.5, y=-0.5, z=-0.5))
-
-            robot_rt_world = get_vision_tform_body(robot_state.get_robot_state().kinematic_state.transforms_snapshot)
-
-            
-            # Unstow the arm
-            ready_command = RobotCommandBuilder.arm_ready_command(
-                build_on_command=body_assist_enabled_stand_command)
-            ready_command_id = command_client.robot_command(ready_command)
-            robot.logger.info('Going to "ready" pose')
-            block_until_arm_arrives(command_client, ready_command_id, 3.0)
-
-            print(vision_tform_fiducial)
-            # print(rotation)
-            print(robot_rt_world)
-            # hand_rt_world = get_a_tform_b(robot_state.get_robot_state().kinematic_state.transforms_snapshot, BODY_FRAME_NAME, HAND_FRAME_NAME)
-            # rotation = Quat()
-            # print(hand_rt_world)
-            # offset = vision_tform_fiducial.position.z - robot_rt_world.position.z
-            # raise_arm = SE3Pose(x=hand_rt_world.position.x + 0.55, y=hand_rt_world.position.y, z=robot_rt_world.position.z + offset, 
-            #                     rot=Quat(w=hand_rt_world.rotation.w, x=hand_rt_world.rotation.x, y=hand_rt_world.rotation.y, z=hand_rt_world.rotation.z)).to_proto()
-            sh0 = 0.0692
-            sh1 = -1.882
-            el0 = 0
-            el1 = 0.5
-            wr0 = 0
-            wr1 = 0
-            traj_point = RobotCommandBuilder.create_arm_joint_trajectory_point(
-            sh0, sh1, el0, el1, wr0, wr1)
-            arm_traj = arm_command_pb2.ArmJointTrajectory(points=[traj_point])
-            command = make_robot_command(arm_traj)
-            cmd_id = command_client.robot_command(command)
-            # gaze_command = RobotCommandBuilder.arm_pose_command(
-            #     vision_tform_fiducial.position.x,
-            #     vision_tform_fiducial.position.y,
-            #     vision_tform_fiducial.position.z,
-            #     rotation.w,
-            #     rotation.x,
-            #     rotation.y,
-            #     rotation.z,
-            #     frame_name=VISION_FRAME_NAME,
-            # )
-            
-            # arm_command = RobotCommandBuilder.arm_cartesian_move_helper([vision_tform_fiducial], [3.0], VISION_FRAME_NAME, wrist_tform_tool=wrist_tform_tool.to_proto(), build_on_command=body_assist_enabled_stand_command)
-            
-            gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(
-                0.0)
-            
-            #Move SPOT arm relative to fiducial position
-            command = RobotCommandBuilder.build_synchro_command(
-                gripper_command)
-            
-            cmd_id = command_client.robot_command(command)
-            
-            block_until_arm_arrives(command_client, cmd_id)
-            
-            # Make the open gripper RobotCommand
-            # gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(12.0)
-
-            # Combine the arm and gripper commands into one RobotCommand
-            #command = RobotCommandBuilder.build_synchro_command(gripper_command, arm_command)
+    robot_state = robot.ensure_client(RobotStateClient.default_service_name)
+    fiducial = get_fiducial_objects()
+    arm_command = None
         
-            #command = RobotCommandBuilder.build_synchro_command(arm_command)
-            #synchro_command = RobotCommandBuilder.build_synchro_command(gaze_command)
-            # robot.logger.info("Requesting gaze.")
-            # gaze_command_id = command_client.robot_command(synchro_command)
+    if fiducial is not None:
+        vision_tform_fiducial = get_a_tform_b(
+            fiducial.transforms_snapshot,
+            VISION_FRAME_NAME,
+            fiducial.apriltag_properties.frame_name_fiducial,
+        ).to_proto()
+
+        body_control = spot_command_pb2.BodyControlParams(
+            body_assist_for_manipulation=spot_command_pb2.BodyControlParams.
+            BodyAssistForManipulation(enable_hip_height_assist=True, enable_body_yaw_assist=True))
+        body_assist_enabled_stand_command = RobotCommandBuilder.synchro_stand_command(
+            params=spot_command_pb2.MobilityParams(body_control=body_control))
+
+        robot_rt_world = get_vision_tform_body(robot_state.get_robot_state().kinematic_state.transforms_snapshot)
+
         
-        #Reference from arm_gaze
-        # Combine the arm and gripper commands into one RobotCommand
-        # synchro_command = RobotCommandBuilder.build_synchro_command(gripper_command, gaze_command)
+        # Unstow the arm
+        ready_command = RobotCommandBuilder.arm_ready_command(
+            build_on_command=body_assist_enabled_stand_command)
+        ready_command_id = command_client.robot_command(ready_command)
+        robot.logger.info('Going to "ready" pose')
+        block_until_arm_arrives(command_client, ready_command_id, 3.0)
 
-        # # Send the request
-        # robot.logger.info('Requesting gaze.')
-        # gaze_command_id = command_client.robot_command(synchro_command)
+        print(vision_tform_fiducial)
+        # print(rotation)
+        print(robot_rt_world)
+                    
+        rotation = Quat()
+        raise_arm = RobotCommandBuilder.arm_pose_command(
+            1,
+            vision_tform_fiducial.position.y - robot_rt_world.position.y,
+            vision_tform_fiducial.position.z - robot_rt_world.position.z,
+            rotation.w,
+            rotation.x,
+            rotation.y,
+            rotation.z,
+            frame_name=BODY_FRAME_NAME,
+        )
+        command = RobotCommandBuilder.build_synchro_command(raise_arm)
+        cmd_id = command_client.robot_command(command)
+        block_until_arm_arrives(command_client, cmd_id)
+        
+        arm_command = RobotCommandBuilder.arm_pose_command_from_pose(vision_tform_fiducial, VISION_FRAME_NAME, seconds=2, build_on_command=body_assist_enabled_stand_command)
+        gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(
+            0.0)
+        
+        #Move SPOT arm relative to fiducial position
+        command = RobotCommandBuilder.build_synchro_command(
+            gripper_command, arm_command)
+        
+        cmd_id = command_client.robot_command(command)
+        
+        block_until_arm_arrives(command_client, cmd_id)
+        
+        # Make the open gripper RobotCommand
+        # gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(12.0)
 
-        # block_until_arm_arrives(command_client, gaze_command_id, 4.0)
-        return True, arm_command
-    except Exception as exc:  # pylint: disable=broad-except
-        logger = bosdyn.client.util.get_logger()
-        logger.exception("Threw an exception")
-        return False, None
-
-
-# def bottomRow(robot, command_client):
-#     print("POSITION 0")
-#     # Example 2: Single point trajectory with maximum acceleration/velocity constraints specified such
-#     # that the solver has to modify the desired points to honor the constraints
-#     sh0 = 0.0
-#     sh1 = -2.0
-#     el0 = 2.3
-#     el1 = 0.0
-#     wr0 = -0.2
-#     wr1 = 0.0
-#     max_vel = wrappers_pb2.DoubleValue(value=1)
-#     max_acc = wrappers_pb2.DoubleValue(value=5)
-#     traj_point = RobotCommandBuilder.create_arm_joint_trajectory_point(
-#         sh0, sh1, el0, el1, wr0, wr1, time_since_reference_secs=1.5
-#     )
-#     arm_joint_traj = arm_command_pb2.ArmJointTrajectory(
-#         points=[traj_point], maximum_velocity=max_vel, maximum_acceleration=max_acc
-#     )
-#     # Make a RobotCommand
-#     command = make_robot_command(arm_joint_traj)
-
-#     # Send the request
-#     cmd_id = command_client.robot_command(command)
-#     robot.logger.info(
-#         "Requesting a single point trajectory with unsatisfiable constraints."
-#     )
-
-#     # Query for feedback
-#     feedback_resp = command_client.robot_command_feedback(cmd_id)
-#     robot.logger.info("Feedback for Example 2: planner modifies trajectory")
-#     # time_to_goal = print_feedback(feedback_resp, robot.logger)
-#     # time.sleep(time_to_goal)
-
-#     # time.sleep(3)
-#     print("BOTTOM ROW")
-#     return cmd_id
-#     # RETURN CMD_ID
-
-
-# def middleRow(robot, command_client):
-#     # Example 2: Single point trajectory with maximum acceleration/velocity constraints specified such
-#     # that the solver has to modify the desired points to honor the constraints
-#     sh0 = 0.0
-#     sh1 = -2.0
-#     el0 = 1.9
-#     el1 = 0.0
-#     wr0 = 0.0
-#     wr1 = 0.0
-#     max_vel = wrappers_pb2.DoubleValue(value=1)
-#     max_acc = wrappers_pb2.DoubleValue(value=5)
-#     traj_point = RobotCommandBuilder.create_arm_joint_trajectory_point(
-#         sh0, sh1, el0, el1, wr0, wr1, time_since_reference_secs=1.5
-#     )
-#     arm_joint_traj = arm_command_pb2.ArmJointTrajectory(
-#         points=[traj_point], maximum_velocity=max_vel, maximum_acceleration=max_acc
-#     )
-#     # Make a RobotCommand
-#     command = make_robot_command(arm_joint_traj)
-
-#     # Send the request
-#     cmd_id = command_client.robot_command(command)
-#     robot.logger.info(
-#         "Requesting a single point trajectory with unsatisfiable constraints."
-#     )
-
-#     # Query for feedback
-#     feedback_resp = command_client.robot_command_feedback(cmd_id)
-#     robot.logger.info("Feedback for Example 2: planner modifies trajectory")
-#     # time_to_goal = print_feedback(feedback_resp, robot.logger)
-#     # time.sleep(time_to_goal)
-
-#     time.sleep(3)
-#     print("MIDDLE ROW")
-#     return cmd_id
-
-
-# def topRow(robot, command_client):
-#     # Example 2: Single point trajectory with maximum acceleration/velocity constraints specified such
-#     # that the solver has to modify the desired points to honor the constraints
-#     sh0 = 0.0
-#     sh1 = -2.0
-#     el0 = 1.3
-#     el1 = 0.0
-#     wr0 = 0.6
-#     wr1 = 0.0
-#     max_vel = wrappers_pb2.DoubleValue(value=1)
-#     max_acc = wrappers_pb2.DoubleValue(value=5)
-#     traj_point = RobotCommandBuilder.create_arm_joint_trajectory_point(
-#         sh0, sh1, el0, el1, wr0, wr1, time_since_reference_secs=1.5
-#     )
-#     arm_joint_traj = arm_command_pb2.ArmJointTrajectory(
-#         points=[traj_point], maximum_velocity=max_vel, maximum_acceleration=max_acc
-#     )
-#     # #robot
-#     # robot = sdk.create_robot(options.hostname)
-#     # command_client = robot.ensure_client(RobotCommandClient.default_service_name)
-#     # Make a RobotCommand
-#     command = make_robot_command(arm_joint_traj)
-
-#     # Send the request
-#     cmd_id = command_client.robot_command(command)
-#     robot.logger.info(
-#         "Requesting a single point trajectory with unsatisfiable constraints."
-#     )
-
-#     # Query for feedback
-#     feedback_resp = command_client.robot_command_feedback(cmd_id)
-#     robot.logger.info("Feedback for Example 2: planner modifies trajectory")
-#     # time_to_goal = print_feedback(feedback_resp, robot.logger)
-#     # time.sleep(time_to_goal)
-
-#     # time.sleep(3)
-#     print("TOP ROW")
-#     return cmd_id
-
-
-# def stow(robot, command_client):
-    # Example 3: Single point trajectory with default acceleration/velocity constraints and
-    # time_since_reference_secs large enough such that the solver can plan a solution to the
-    # points that also satisfies the constraints.
-    sh0 = 0.0692
-    sh1 = -1.882
-    el0 = 1.652
-    el1 = -0.0691
-    wr0 = 1.622
-    wr1 = 1.550
-    traj_point = RobotCommandBuilder.create_arm_joint_trajectory_point(
-        sh0, sh1, el0, el1, wr0, wr1, time_since_reference_secs=1.5
-    )
-
-    arm_joint_traj = arm_command_pb2.ArmJointTrajectory(points=[traj_point])
-
-    # Make a RobotCommand
-    command = make_robot_command(arm_joint_traj)
-
-    # Send the request
-    cmd_id = command_client.robot_command(command)
-    robot.logger.info(
-        "Requesting a single point trajectory with satisfiable constraints."
-    )
-
-    # Query for feedback
-    feedback_resp = command_client.robot_command_feedback(cmd_id)
-    robot.logger.info("Feedback for Example 3: unmodified trajectory")
-    time_to_goal = print_feedback(feedback_resp, robot.logger)
-    time.sleep(time_to_goal)
-
-    # ----- Do a two-point joint move trajectory ------
-
-    # First stow the arm.
-    # Build the stow command using RobotCommandBuilder
-    stow = RobotCommandBuilder.arm_stow_command()
-
-    # Issue the command via the RobotCommandClient
-    stow_command_id = command_client.robot_command(stow)
-
-    robot.logger.info("Stow command issued.")
-    block_until_arm_arrives(command_client, stow_command_id, 3)
-
-    time.sleep(3)
-
-    print("done")
-
-
-def place_piece(robot, movePos):
-    robot.time_sync.wait_for_sync()
-    command_client = robot.ensure_client(RobotCommandClient.default_service_name)
-    boolean, gaze_command = joint_move_example(robot, movePos, command_client)
-    
-    # block_until_arm_arrives(command_client, arm_command, 20.0)
-    # time.sleep(3)
-
-    # Send the request
-    # cmd_id = command_client.robot_command(command)
-    # robot.logger.info('Moving arm to position 1.')
-
-    # Wait until the arm arrives at the goal.
-    #block_until_arm_arrives_with_prints(robot, command_client, cmd_id)
-    
-    
+        # # Combine the arm and gripper commands into one RobotCommand
+        # command = RobotCommandBuilder.build_synchro_command(gripper_command)
+        # cmd_id = command_client.robot_command(command)
+        
     print("Carrying Finished, Stowing...")
     stow = RobotCommandBuilder.arm_stow_command()
     block_until_arm_arrives
@@ -440,7 +139,14 @@ if __name__ == "__main__":
     load_dotenv()
     parser = argparse.ArgumentParser()
     bosdyn.client.util.add_base_arguments(parser)
-
+    parser.add_argument('-d', '--distance-margin', default=0.75,
+                        help='Distance [meters] that the robot should stop from the fiducial.')
+    parser.add_argument('--limit-speed', default=True, type=lambda x: (str(x).lower() == 'true'),
+                        help='If the robot should limit its maximum speed.')
+    parser.add_argument('--avoid-obstacles', default=False, type=lambda x:
+                        (str(x).lower() == 'true'),
+                        help='If the robot should have obstacle avoidance enabled.')
+    
     options = parser.parse_args()
 
     sdk = bosdyn.client.create_standard_sdk("TicTacSPOT")
@@ -464,6 +170,9 @@ if __name__ == "__main__":
 
         blocking_stand(command_client)
         time.sleep(0.35)
+        
+        class_obj = follow.fiducial_follow(robot, options, 536)
+        
         def change_pitch(pitch):
             footprint_R_body = bosdyn.geometry.EulerZXY(yaw=0.0, roll=0.0, pitch=pitch)
             cmd = RobotCommandBuilder.synchro_stand_command(footprint_R_body=footprint_R_body)
@@ -472,5 +181,5 @@ if __name__ == "__main__":
         
         change_pitch(-0.45)
         time.sleep(2)
-        place_piece(robot, 546)
+        place_piece(robot, 537)
         

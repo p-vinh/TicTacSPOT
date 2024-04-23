@@ -38,17 +38,6 @@ LIST_IDS = [530, 531, 532, 533, 534, 535, 536, 537, 538]
 BODY_LENGTH = 1.1
 
 
-def get_input():
-    """
-    Get input from the user.
-    """
-    while True:
-        try:
-            x = int(input("Enter a number: "))
-            break
-        except ValueError:
-            print("Invalid input. Try again.")
-    return x
 
 def verify_estop(robot):
     """Verify the robot is not estopped"""
@@ -152,8 +141,8 @@ def main():
                         required=True)
     parser.add_argument('-c', '--confidence-piece',
                         help='Minimum confidence to return an object for the dogoy (0.0 to 1.0)',
-                        default=0.5, type=float)
-    parser.add_argument('-d', '--distance-margin', default=0.45,
+                        default=0.8, type=float)
+    parser.add_argument('-d', '--distance-margin', default=0.60,
                         help='Distance [meters] that the robot should stop from the fiducial.')
     parser.add_argument('--limit-speed', default=True, type=lambda x: (str(x).lower() == 'true'),
                         help='If the robot should limit its maximum speed.')
@@ -260,7 +249,7 @@ def main():
         print("Placing Piece....")
         
         # Go back to original position
-        obj = goTo.headToNewCoords(robot, options, robot_initial_coords)
+        # obj = goTo.headToNewCoords(robot, options, robot_initial_coords)
         
         time.sleep(1)
         
@@ -275,7 +264,7 @@ def main():
         place.place_piece(robot, id)
         
         # 6. Backup From Reference Point
-        #class_obj.backup_from_reference(2) # Backup 5 meters from reference point
+        class_obj.backup_from_reference(1.1) # Backup 1.1 meters from reference point
         
         
         # 7. Gameover?
