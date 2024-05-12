@@ -39,7 +39,11 @@ from bosdyn.client.math_helpers import Quat
 from bosdyn.client.robot_state import RobotStateClient
 from dotenv import load_dotenv
 
-def get_fiducial_objects(fid_id):
+def place_piece(robot, fid_id):
+    robot.time_sync.wait_for_sync()
+    command_client = robot.ensure_client(RobotCommandClient.default_service_name)
+    
+    def get_fiducial_objects():
         """Get all fiducials that Spot detects with its perception system."""
         # Get all fiducial objects (an object of a specific type).
 
@@ -57,56 +61,8 @@ def get_fiducial_objects(fid_id):
                     return fid
         return None
 
-
-# Moves the arm into the center of the fiducial based on where it is.
-def ready_position(robot, fid_id):
-    # Unstow the arm
-    ready_command = RobotCommandBuilder.arm_ready_command(
-        build_on_command=body_assist_enabled_stand_command)
-    ready_command_id = command_client.robot_command(ready_command)
-    robot.logger.info('Going to "ready" pose')
-    block_until_arm_arrives(command_client, ready_command_id, 3.0)
-    fiducial = get_fiducial_objects(fid_id)
-    
-    
     robot_state = robot.ensure_client(RobotStateClient.default_service_name)
-    
-    body_control = spot_command_pb2.BodyControlParams(
-            body_assist_for_manipulation=spot_command_pb2.BodyControlParams.
-            BodyAssistForManipulation(enable_hip_height_assist=True, enable_body_yaw_assist=True))
-    body_assist_enabled_stand_command = RobotCommandBuilder.synchro_stand_command(
-            params=spot_command_pb2.MobilityParams(body_control=body_control))
-
-    robot_rt_world = get_vision_tform_body(robot_state.get_robot_state().kinematic_state.transforms_snapshot)
-    
-    vision_tform_fiducial = get_a_tform_b(
-        fiducial.transforms_snapshot,
-        VISION_FRAME_NAME,
-        fiducial.apriltag_properties.frame_name_fiducial,
-    ).to_proto()
-
-    rotation = Quat()
-    raise_arm = RobotCommandBuilder.arm_pose_command(
-        1,
-        vision_tform_fiducial.position.y - robot_rt_world.position.y,
-        vision_tform_fiducial.position.z - robot_rt_world.position.z,
-        rotation.w,
-        rotation.x,
-        rotation.y,
-        rotation.z,
-        frame_name=BODY_FRAME_NAME,
-        build_on_command=body_assist_enabled_stand_command
-    )
-    command = RobotCommandBuilder.build_synchro_command(raise_arm)
-    cmd_id = command_client.robot_command(command)
-    block_until_arm_arrives(command_client, cmd_id)
-    
-
-def place_piece(robot, fid_id):
-    robot.time_sync.wait_for_sync()
-    command_client = robot.ensure_client(RobotCommandClient.default_service_name)
-
-    fiducial = get_fiducial_objects(fid_id)
+    fiducial = get_fiducial_objects()
     arm_command = None
         
     if fiducial is not None:
@@ -122,6 +78,35 @@ def place_piece(robot, fid_id):
         body_assist_enabled_stand_command = RobotCommandBuilder.synchro_stand_command(
             params=spot_command_pb2.MobilityParams(body_control=body_control))
 
+        robot_rt_world = get_vision_tform_body(robot_state.get_robot_state().kinematic_state.transforms_snapshot)
+
+        
+        # Unstow the arm
+        ready_command = RobotCommandBuilder.arm_ready_command(
+            build_on_command=body_assist_enabled_stand_command)
+        ready_command_id = command_client.robot_command(ready_command)
+        robot.logger.info('Going to "ready" pose')
+        block_until_arm_arrives(command_client, ready_command_id, 3.0)
+
+        print(vision_tform_fiducial)
+        # print(rotation)
+        print(robot_rt_world)
+                    
+        rotation = Quat()
+        raise_arm = RobotCommandBuilder.arm_pose_command(
+            1,
+            vision_tform_fiducial.position.y - robot_rt_world.position.y,
+            vision_tform_fiducial.position.z - robot_rt_world.position.z,
+            rotation.w,
+            rotation.x,
+            rotation.y,
+            rotation.z,
+            frame_name=BODY_FRAME_NAME,
+        )
+        command = RobotCommandBuilder.build_synchro_command(raise_arm)
+        cmd_id = command_client.robot_command(command)
+        block_until_arm_arrives(command_client, cmd_id)
+        
         arm_command = RobotCommandBuilder.arm_pose_command_from_pose(vision_tform_fiducial, VISION_FRAME_NAME, seconds=2, build_on_command=body_assist_enabled_stand_command)
         gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(
             0.0)
@@ -194,16 +179,7 @@ if __name__ == "__main__":
             command_client.robot_command(cmd)
             robot.logger.info('Robot Pitch')
         
-        
-        # ready the arm to fiducial
         change_pitch(-0.45)
         time.sleep(2)
-        ready_position(robot, 537)
-        # move spot while arm is up.
-        follow.fiducial_follow(robot, options, 537)
-        
-        # adjust the arm while spot is getting closer to the board (ref fetch only up piece)
-        
-        # place the piece (arm surface contact, apply some amount of force onto the board)
         place_piece(robot, 537)
         
