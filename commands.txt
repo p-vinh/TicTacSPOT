@@ -18,9 +18,4 @@ python fetch_only_pickup.py -s tictactoe -m my_efficient_model -c 0.85 192.168.8
 
 To run the project, you would need to run these 2 command lines:
 python main.py -m my_efficient_model -s tictactoe -c 0.85 192.168.80.3
-python network_compute_server.py -m "C:\Users\CPP-UAV-CYBER-A\Spot.Data\TicTacSPOT\Utilities\models\my_efficient_model\saved_model" "C:\Users\CPP-UAV-CYBER-A\Spot.Data\TicTacSPOT\pieces\annotations\annotations\label_map.pbtxt" -d -n "tictactoe" 192.168.80.3
-
-
-To activate environment:
-.\Spot.Data\new_spot_env\Scripts\activate.bat
-cd Spot.Data\TicTacSPOT\Fiducial
+python network_compute_server.py -m "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\Utilities\models\my_efficient_model\saved_model" "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\annotations\annotations\label_map.pbtxt" -d -n "tictactoe" 192.168.80.3
