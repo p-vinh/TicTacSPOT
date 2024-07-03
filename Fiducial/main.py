@@ -6,7 +6,7 @@ import goToInitial as goTo
 import logging
 from dotenv import load_dotenv
 import time
-import numpy as np
+
 
 import bosdyn.client
 import bosdyn.client.util

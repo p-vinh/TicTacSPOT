@@ -246,7 +246,7 @@ class FollowFiducial(object):
         """Check if the current robot state is within range of the fiducial position."""
         robot_state = get_vision_tform_body(self.robot_state.kinematic_state.transforms_snapshot)
         robot_angle = robot_state.rot.to_yaw()
-        print("Robot Angle: ", robot_angle)
+        print("Robot *Changed*? Angle: ", robot_angle)
         
         if self._current_tag_world_pose.size != 0:
             x_dist = abs(self._current_tag_world_pose[0] - robot_state.x)

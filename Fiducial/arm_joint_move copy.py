@@ -39,20 +39,10 @@ from bosdyn.client.math_helpers import Quat
 from bosdyn.client.robot_state import RobotStateClient
 from dotenv import load_dotenv
 
-#by Deyi, this might solve the placement issue, and this function will be integate in place_ouece function
-def control_gripper(command_client, open_fraction):
-    gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(open_fraction)
-    command = RobotCommandBuilder.build_synchro_command(gripper_command)
-    cmd_id = command_client.robot_command(command)
-    block_until_arm_arrives(command_client, cmd_id)
-
-
 def place_piece(robot, fid_id):
-    
     robot.time_sync.wait_for_sync()
     command_client = robot.ensure_client(RobotCommandClient.default_service_name)
-    robot_state = robot.ensure_client(RobotStateClient.default_service_name)
-
+    
     def get_fiducial_objects():
         """Get all fiducials that Spot detects with its perception system."""
         # Get all fiducial objects (an object of a specific type).
@@ -96,9 +86,7 @@ def place_piece(robot, fid_id):
             build_on_command=body_assist_enabled_stand_command)
         ready_command_id = command_client.robot_command(ready_command)
         robot.logger.info('Going to "ready" pose')
-        block_until_arm_arrives(command_client, ready_command_id, 3.0) 
-        #added gripper control
-        control_gripper(command_client, open_fraction=1.0)
+        block_until_arm_arrives(command_client, ready_command_id, 3.0)
 
         print(vision_tform_fiducial)
         # print(rotation)
@@ -119,9 +107,6 @@ def place_piece(robot, fid_id):
         cmd_id = command_client.robot_command(command)
         block_until_arm_arrives(command_client, cmd_id)
         
-         # Close gripper to hold the piece securely
-        control_gripper(command_client, open_fraction=0.0)
-
         arm_command = RobotCommandBuilder.arm_pose_command_from_pose(vision_tform_fiducial, VISION_FRAME_NAME, seconds=2, build_on_command=body_assist_enabled_stand_command)
         gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(
             0.0)
@@ -133,11 +118,6 @@ def place_piece(robot, fid_id):
         cmd_id = command_client.robot_command(command)
         
         block_until_arm_arrives(command_client, cmd_id)
-
-        # Open gripper to release the piece
-        print ("Opening Gripper")
-        control_gripper(command_client, open_fraction=1.0) 
-        time.sleep(3.0)
         
         # Make the open gripper RobotCommand
         # gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(12.0)
@@ -146,11 +126,16 @@ def place_piece(robot, fid_id):
         # command = RobotCommandBuilder.build_synchro_command(gripper_command)
         # cmd_id = command_client.robot_command(command)
         
+        gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(1.0)
+        cmd_id = command_client.robot_command(gripper_command)
+        block_until_arm_arrives(command_client, cmd_id)
+
+        
     print("Carrying Finished, Stowing...")
     stow = RobotCommandBuilder.arm_stow_command()
     block_until_arm_arrives
     (
-        command_client, command_client.robot_command(stow)
+        command_client, command_client.robot_command(stow), 3.0
     )
 
 
