@@ -46,7 +46,8 @@ class BoardInput:
         self.totalOPieces += 1
 
     def checkValidInput(self, listOfId):
-        if len(listOfId) + self.totalCountPieces + 1 == 9:
+        #we delated +1 for this line below
+        if len(listOfId) + self.totalCountPieces == 9:
             return True
         else:
             return False

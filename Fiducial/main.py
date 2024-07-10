@@ -82,6 +82,7 @@ def detectFiducial(expectedNumberOfFiducials, pitch):
         pitch -= 0.1
         return detectFiducial(expectedNumberOfFiducials, pitch)
 
+
         
 def change_pitch(pitch):
     footprint_R_body = bosdyn.geometry.EulerZXY(yaw=0.0, roll=0.0, pitch=pitch)
@@ -213,76 +214,89 @@ def main():
         
         # #Get Fiducials
         # # while loop insert here <----------Game Loop starts
+        while(expectedNumberOfFiducials > 0)  : 
+            # #1. Find Fidicials and Update Board ----> Player move
+            # #Have Spot twist up to see all fiducials        
+            ids = detectFiducial(expectedNumberOfFiducials, -0.2) #list of id and postion (aka coord) pairs
+            board.updateBoard(ids, player) #updates board
+            
+            print("Detection done, found players move....")
+            print("-----------------Board State:-------------")
+            board.printBoard()
+            board.addOPiece()
+            board.updateTotalPieces()
+            print("Player pieces:", board.getOPieces())
+            print("SPOT's Pieces: ", board.getXPieces())
+            print("Total Pieces on board: ", board.getTotalPieces())
+            print("------------------------------------------")
 
-        # #1. Find Fidicials and Update Board ----> Player move
-        # #Have Spot twist up to see all fiducials        
-        ids = detectFiducial(expectedNumberOfFiducials, -0.2) #list of id and postion (aka coord) pairs
-        board.updateBoard(ids, player) #updates board
-        
-        print("Detection done, found players move....")
-        print("-----------------Board State:-------------")
-        board.printBoard()
-        board.addOPiece()
-        board.updateTotalPieces()
-        print("Player pieces:", board.getOPieces())
-        print("SPOT's Pieces: ", board.getXPieces())
-        print("Total Pieces on board: ", board.getTotalPieces())
-        print("------------------------------------------")
+            # #Have SPOT go back to stand position
+            goBackToSame =  bosdyn.geometry.EulerZXY(yaw=0.0, roll=0.0, pitch=0.0)
+            cmd2 = RobotCommandBuilder.synchro_stand_command(footprint_R_body=goBackToSame)
+            command_client.robot_command(cmd2)
+            robot.logger.info('Robot is back to stand position')
+            time.sleep(3)
+            
+            # #2. Minimax
+            move, id = ttt.minimax(board.getBoardState())
+            
+            #3. Pick Piece
+            robot.logger.info('Sending Robot Pickup Request')
+            fetch.pick_up(options, robot)
+            time.sleep(1) # Wait for pickup to finish
+            print(move, id)
+            
+            # 4. Set up Position
+            print("Placing Piece....")
+            
+            # Go back to original position
+            # obj = goTo.headToNewCoords(robot, options, robot_initial_coords)
+            
+            time.sleep(1)
+            
+            #Go to Fiducial
+            class_obj = follow.fiducial_follow(robot, options, BOARD_REF)
+            
+            # We want to tilt until we see the whole board:
+            
+            detectFiducial(expectedNumberOfFiducials, -0.2)
+            
+            # 5. Place Piece
+            place.place_piece(robot, id)
+            
+            # 6. Backup From Reference Point
+            class_obj.backup_from_reference(1.5) # Backup 1.1 meters from reference point
+            
+            
+            # 7. Gameover?
+            piece = ttt.winner(board.getBoardState())
+            if piece == ttt.X:
+                print("Spot wins")
+                # DANCE
+                # break For infinite game loop
+            elif piece == ttt.O:
+                print("Player wins")
+                # break
+            elif piece == None:
+                print("No one won yet")
+                # break
+            
+            # Wait for player to place their piece
+            #might need to addPiece after this, but then question is how does the board keep track of it
+            
+                        # placedpieces = [531(O)]       
 
-        # #Have SPOT go back to stand position
-        goBackToSame =  bosdyn.geometry.EulerZXY(yaw=0.0, roll=0.0, pitch=0.0)
-        cmd2 = RobotCommandBuilder.synchro_stand_command(footprint_R_body=goBackToSame)
-        command_client.robot_command(cmd2)
-        robot.logger.info('Robot is back to stand position')
-        time.sleep(3)
-        
-        # #2. Minimax
-        move, id = ttt.minimax(board.getBoardState())
-        
-        #3. Pick Piece
-        robot.logger.info('Sending Robot Pickup Request')
-        fetch.pick_up(options, robot)
-        time.sleep(1) # Wait for pickup to finish
-        print(move, id)
-        
-        # 4. Set up Position
-        print("Placing Piece....")
-        
-        # Go back to original position
-        # obj = goTo.headToNewCoords(robot, options, robot_initial_coords)
-        
-        time.sleep(1)
-        
-        #Go to Fiducial
-        class_obj = follow.fiducial_follow(robot, options, BOARD_REF)
-        
-        # We want to tilt until we see the whole board:
-        
-        detectFiducial(expectedNumberOfFiducials, -0.2)
-        
-        # 5. Place Piece
-        place.place_piece(robot, id)
-        
-        # 6. Backup From Reference Point
-        class_obj.backup_from_reference(1.1) # Backup 1.1 meters from reference point
-        
-        
-        # 7. Gameover?
-        piece = ttt.winner(board.getBoardState())
-        if piece == ttt.X:
-            print("Spot wins")
-            # DANCE
-            # break For infinite game loop
-        elif piece == ttt.O:
-            print("Player wins")
-            # break
-        elif piece == None:
-            print("No one won yet")
-            # break
-        
-        # Wait for player to place their piece
-        # expectedNumberOfFiducials -= 1   
-        time.sleep(10)         
+            #Spot placed piece, now append to the list
+            player = ttt.X
+            board.updateBoard(ids, player) #updates board
+
+            #Now player puts his piece, append to the list    
+            time.sleep(10)    #Waits for player for 10s, will change later to get player input instead
+            player = ttt.O
+            board.updateBoard(ids, player) #updates board
+            
+            expectedNumberOfFiducials -= 2
+         
             
 
 if __name__ == '__main__':

@@ -2,16 +2,7 @@ import math
 import copy
 
 X = "X"
-O = "O"
-# ids for the qr codes:
-EMPTY = [0,1,2,3,4,5,6,7,8,9]
-
-# Creates an empty board
-def initial_state():
-    return [[EMPTY, EMPTY, EMPTY],
-             [EMPTY, EMPTY, EMPTY],
-             [EMPTY, EMPTY, EMPTY]]
-    
+O = "O" 
 
 # Returns player who has the next turn on a board
 def player(board):

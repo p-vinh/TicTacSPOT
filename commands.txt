@@ -1,7 +1,6 @@
 python generate_tfrecord.py --xml_dir "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\annotations\annotations\test" --image_dir "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\images" --labels_path "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\annotations\annotations\label_map.pbtxt" --output_path "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\annotations\annotations\test.record"
 
 
-
 python model_main_tf2.py --model_dir="C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\Utilities\models\my_model" --pipeline_config_path="C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\Utilities\models\my_model\pipeline.config" --num_train_steps=20000
 
 python exporter_main_v2.py --input_type image_tensor --pipeline_config_path "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\Utilities\models\my_tensorflow_lte\pipeline_file.config" --trained_checkpoint_dir "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\Utilities\models\my_tensorflow_lte" --output_directory "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\Utilities\exported_models"
@@ -18,4 +17,7 @@ python fetch_only_pickup.py -s tictactoe -m my_efficient_model -c 0.85 192.168.8
 
 To run the project, you would need to run these 2 command lines:
 python main.py -m my_efficient_model -s tictactoe -c 0.85 192.168.80.3
-python network_compute_server.py -m "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\Utilities\models\my_efficient_model\saved_model" "C:\Users\CPP-UAV-CYBER-A\Documents\TicTacSPOT\pieces\annotations\annotations\label_map.pbtxt" -d -n "tictactoe" 192.168.80.3
+python network_compute_server.py -m "C:\Users\CPP-UAV-CYBER-A\Spot.Data\TicTacSPOT\Utilities\models\my_efficient_model\saved_model" "C:\Users\CPP-UAV-CYBER-A\Spot.Data\TicTacSPOT\pieces\annotations\annotations\label_map.pbtxt" -d -n "tictactoe" 192.168.80.3
+
+.\Spot.Data\new_spot_env\Scripts\activate.bat
+cd Spot.Data\TicTacSPOT\Fiducial

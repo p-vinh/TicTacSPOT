@@ -39,10 +39,21 @@ from bosdyn.client.math_helpers import Quat
 from bosdyn.client.robot_state import RobotStateClient
 from dotenv import load_dotenv
 
+###
+#by Deyi, this might solve the placement issue, and this function will be integate in place_piece function
+def control_gripper(command_client, open_fraction):
+    gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(open_fraction)
+    command = RobotCommandBuilder.build_synchro_command(gripper_command)
+    cmd_id = command_client.robot_command(command)
+    block_until_arm_arrives(command_client, cmd_id, 5.0)
+
+
+
 def place_piece(robot, fid_id):
     robot.time_sync.wait_for_sync()
     command_client = robot.ensure_client(RobotCommandClient.default_service_name)
-    
+    robot_state = robot.ensure_client(RobotStateClient.default_service_name)
+
     def get_fiducial_objects():
         """Get all fiducials that Spot detects with its perception system."""
         # Get all fiducial objects (an object of a specific type).
@@ -87,37 +98,45 @@ def place_piece(robot, fid_id):
         ready_command_id = command_client.robot_command(ready_command)
         robot.logger.info('Going to "ready" pose')
         block_until_arm_arrives(command_client, ready_command_id, 3.0)
-
+        
+        print ("VISION_TFORM_FIDUCIAL: ")
         print(vision_tform_fiducial)
         # print(rotation)
+        print ("ROBOT_RT_WORLD: ")
         print(robot_rt_world)
                     
         rotation = Quat()
-        raise_arm = RobotCommandBuilder.arm_pose_command(
-            1,
-            vision_tform_fiducial.position.y - robot_rt_world.position.y,
-            vision_tform_fiducial.position.z - robot_rt_world.position.z,
-            rotation.w,
-            rotation.x,
-            rotation.y,
-            rotation.z,
-            frame_name=BODY_FRAME_NAME,
-        )
-        command = RobotCommandBuilder.build_synchro_command(raise_arm)
-        cmd_id = command_client.robot_command(command)
-        block_until_arm_arrives(command_client, cmd_id)
+        # raise_arm = RobotCommandBuilder.arm_pose_command(
+        #     1,
+        #     vision_tform_fiducial.position.y - robot_rt_world.position.y,
+        #     vision_tform_fiducial.position.z - robot_rt_world.position.z,
+        #     rotation.w,
+        #     rotation.x,
+        #     rotation.y,
+        #     rotation.z,
+        #     frame_name=BODY_FRAME_NAME,
+        # )
         
-        arm_command = RobotCommandBuilder.arm_pose_command_from_pose(vision_tform_fiducial, VISION_FRAME_NAME, seconds=2, build_on_command=body_assist_enabled_stand_command)
-        gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(
-            0.0)
+        # print ("Doing raise arm command...")
+        # command = RobotCommandBuilder.build_synchro_command(raise_arm)
+        # cmd_id = command_client.robot_command(command)
+        # block_until_arm_arrives(command_client, cmd_id)
+        
+        arm_command = RobotCommandBuilder.arm_pose_command_from_pose(vision_tform_fiducial, VISION_FRAME_NAME, seconds=7, build_on_command=body_assist_enabled_stand_command)
+        # gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(0.0)
         
         #Move SPOT arm relative to fiducial position
-        command = RobotCommandBuilder.build_synchro_command(
-            gripper_command, arm_command)
+        # command = RobotCommandBuilder.build_synchro_command(
+        #     gripper_command, arm_command)
         
-        cmd_id = command_client.robot_command(command)
+        print ("Doing arm pose command....")
+        cmd_id = command_client.robot_command(arm_command)
         
         block_until_arm_arrives(command_client, cmd_id)
+
+        # Open gripper to release the piece
+        print ("Opening gripper... ")
+        control_gripper(command_client, open_fraction=1.0) 
         
         # Make the open gripper RobotCommand
         # gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(12.0)
@@ -182,4 +201,3 @@ if __name__ == "__main__":
         change_pitch(-0.45)
         time.sleep(2)
         place_piece(robot, 537)
-        
