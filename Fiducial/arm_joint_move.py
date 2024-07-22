@@ -10,6 +10,8 @@ import argparse
 import time
 import fiducial_follow as follow
 
+from bosdyn.api import geometry_pb2
+
 import bosdyn.client
 import bosdyn.client.estop
 import bosdyn.client.lease
@@ -39,6 +41,114 @@ from bosdyn.client.math_helpers import Quat
 from bosdyn.client.robot_state import RobotStateClient
 from dotenv import load_dotenv
 
+
+### By Ali
+# Get all detected fiducials 
+def get_fiducial_objects(world_object_client):
+    """Get a specific fiducial that Spot detects with its perception system."""
+    # Get all fiducial objects (an object of a specific type).
+    request_fiducials = [world_object_pb2.WORLD_OBJECT_APRILTAG]
+    fiducial_objects = world_object_client._world_object_client.list_world_objects(object_type=request_fiducials).world_objects
+    return fiducial_objects
+
+# Get a specific Fiducial ID
+def find_fiducial(world_object_client, fid_id):
+    fiducial_objects = get_fiducial_objects(world_object_client)
+
+    for fiducial in fiducial_objects:
+        if fiducial.apriltag_properties.tag_id == fid_id:
+            return fiducial
+    print(f"Fiducial with {fid_id} not found!")
+    return None
+
+def move_arm(robot, target_position, target_orientation, reference_frame, duration):
+    command_client = robot.ensure_client(RobotCommandClient.default_service_name)
+    
+    # Create the command to move the arm to the target position
+    arm_command = RobotCommandBuilder.arm_pose_command(
+        target_position.x, target_position.y, target_position.z,
+        target_orientation.w, target_orientation.x, target_orientation.y,
+        target_orientation.z, reference_frame, duration
+    )
+
+    # Send the command and wait for the arm to arrive
+    cmd_id = command_client.robot_command(arm_command)
+    block_until_arm_arrives(command_client, cmd_id)
+
+def open_gripper(robot, duration=1.0):
+    command_client = robot.ensure_client(RobotCommandClient.default_service_name)
+    
+    # Create the command to open the gripper
+    gripper_command = RobotCommandBuilder.claw_gripper_open_command()
+    
+    # Send the command and wait for the gripper to open
+    cmd_id = command_client.robot_command(gripper_command)
+    block_until_arm_arrives(command_client, cmd_id)
+
+
+def stow_arm(robot, duration=2.0):
+    command_client = robot.ensure_client(RobotCommandClient.default_service_name)
+    
+    # Create the command to stow the arm
+    stow_command = RobotCommandBuilder.arm_stow_command()
+    
+    # Send the command and wait for the arm to stow
+    cmd_id = command_client.robot_command(stow_command)
+    block_until_arm_arrives(command_client, cmd_id)
+
+def place_piece(robot, fid_id):
+    robot.time_sync.wait_for_sync()
+    command_client = robot.ensure_client(RobotCommandClient.default_service_name)
+    robot_state = robot.ensure_client(RobotStateClient.default_service_name)
+    world_object_client = robot.ensure_client(WorldObjectClient.default_service_name)
+
+
+    target_fiducial = find_fiducial(world_object_client, fid_id)
+    if not target_fiducial:
+        return
+    # Assuming SPOT is ready to place piece: standing aligned to the refrence fiducial, arm stowed with TicTacToe piece
+
+    vision_tform_fiducial = get_a_tform_b(
+        target_fiducial.transforms_snapshot, VISION_FRAME_NAME,
+        target_fiducial.apriltag_properties.frame_name_fiducial).to_proto()
+    if vision_tform_fiducial is not None:
+        fiducial_position = vision_tform_fiducial.position
+        fiducial_orientation = vision_tform_fiducial.orientation
+
+        # Calculate the intermediate approach position with fixed X
+        fixed_x = 0.5  # Adjust this value based on your environment for a safe approach
+        approach_position_yz = geometry_pb2.Vec3(
+            x=fixed_x,  # Fixed X position for safe approach
+            y=fiducial_position.y,
+            z=fiducial_position.z
+        )
+
+        # Calculate the final approach position
+        final_approach_position = geometry_pb2.Vec3(
+            x=fiducial_position.x,  # Move to the exact X position of the fiducial
+            y=fiducial_position.y,
+            z=fiducial_position.z
+        )
+
+        # Move the arm along Y and Z axes first with fixed X
+        move_arm(robot, approach_position_yz, fiducial_orientation, VISION_FRAME_NAME, 2.0)
+
+        # Finally, move the arm along the X axis to place the piece
+        move_arm(robot, final_approach_position, fiducial_orientation, VISION_FRAME_NAME, 2.0)
+
+
+        # Open the gripper to release the piece
+        open_gripper(robot, 1.0)
+
+        # Stow the arm
+        stow_arm(robot, 2.0)
+        
+        print("Piece placed successfully!")
+    
+
+
+###
+
 ###
 #by Deyi, this might solve the placement issue, and this function will be integate in place_piece function
 def control_gripper(command_client, open_fraction):
@@ -46,8 +156,6 @@ def control_gripper(command_client, open_fraction):
     command = RobotCommandBuilder.build_synchro_command(gripper_command)
     cmd_id = command_client.robot_command(command)
     block_until_arm_arrives(command_client, cmd_id, 5.0)
-
-
 
 def place_piece(robot, fid_id):
     robot.time_sync.wait_for_sync()
@@ -61,6 +169,7 @@ def place_piece(robot, fid_id):
         _world_object_client = robot.ensure_client(
             WorldObjectClient.default_service_name
         )
+        
         request_fiducials = [world_object_pb2.WORLD_OBJECT_APRILTAG]
         fiducial_objects = _world_object_client.list_world_objects(
             object_type=request_fiducials
