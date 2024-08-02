@@ -35,22 +35,14 @@ class BoardInput:
             for element in row:
                 print(element, end=" ")
             print()
-    
-    def updateTotalPieces(self):
-        self.totalCountPieces = self.totalXPieces + self.totalOPieces
-    
+
     def addXPiece(self):
         self.totalXPieces += 1
-    
+        self.totalCountPieces += 1
+
     def addOPiece(self):
         self.totalOPieces += 1
-
-    def checkValidInput(self, listOfId):
-        #we delated +1 for this line below
-        if len(listOfId) + self.totalCountPieces == 9:
-            return True
-        else:
-            return False
+        self.totalCountPieces += 1
 
     def spotUpdateBoard(self, move):
         print("SPOT Turn: Recording Move")

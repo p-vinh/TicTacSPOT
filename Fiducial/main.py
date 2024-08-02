@@ -268,18 +268,19 @@ def main():
             class_obj.backup_from_reference(1.5) # Backup 1.1 meters from reference point
             
             
-            # 7. Gameover?
-            piece = ttt.winner(board.getBoardState())
-            if piece == ttt.X:
-                print("Spot wins")
-                # DANCE
-                # break For infinite game loop
-            elif piece == ttt.O:
-                print("Player wins")
-                # break
-            elif piece == None:
-                print("No one won yet")
-                # break
+        # All board fiducial pieces covered on:
+        
+        piece = ttt.winner(board.getBoardState())
+        if piece == ttt.X:
+            print("Spot wins")
+            # DANCE
+            # break For infinite game loop
+        elif piece == ttt.O:
+            print("Player wins")
+            # break
+        elif piece == None:
+            print("No one won yet")
+            # break
             
             # Wait for player to place their piece
             #might need to addPiece after this, but then question is how does the board keep track of it
