@@ -45,11 +45,10 @@ from dotenv import load_dotenv
 ### By Ali
 # Get all detected fiducials 
 def get_fiducial_objects(world_object_client):
-    """Get a specific fiducial that Spot detects with its perception system."""
-    # Get all fiducial objects (an object of a specific type).
+    """Get all fiducial objects detected by Spot."""
     request_fiducials = [world_object_pb2.WORLD_OBJECT_APRILTAG]
-    fiducial_objects = world_object_client._world_object_client.list_world_objects(object_type=request_fiducials).world_objects
-    return fiducial_objects
+    response = world_object_client.list_world_objects(object_type=request_fiducials)
+    return response.world_objects
 
 # Get a specific Fiducial ID
 def find_fiducial(world_object_client, fid_id):
@@ -75,26 +74,7 @@ def move_arm(robot, target_position, target_orientation, reference_frame, durati
     cmd_id = command_client.robot_command(arm_command)
     block_until_arm_arrives(command_client, cmd_id)
 
-def open_gripper(robot, duration=1.0):
-    command_client = robot.ensure_client(RobotCommandClient.default_service_name)
-    
-    # Create the command to open the gripper
-    gripper_command = RobotCommandBuilder.claw_gripper_open_command()
-    
-    # Send the command and wait for the gripper to open
-    cmd_id = command_client.robot_command(gripper_command)
-    block_until_arm_arrives(command_client, cmd_id)
 
-
-def stow_arm(robot, duration=2.0):
-    command_client = robot.ensure_client(RobotCommandClient.default_service_name)
-    
-    # Create the command to stow the arm
-    stow_command = RobotCommandBuilder.arm_stow_command()
-    
-    # Send the command and wait for the arm to stow
-    cmd_id = command_client.robot_command(stow_command)
-    block_until_arm_arrives(command_client, cmd_id)
 
 def place_piece(robot, fid_id):
     robot.time_sync.wait_for_sync()
@@ -138,10 +118,22 @@ def place_piece(robot, fid_id):
 
 
         # Open the gripper to release the piece
-        open_gripper(robot, 1.0)
+        gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(1.0)
+        command = RobotCommandBuilder.build_synchro_command(gripper_command)            # build_synchro_command may be unnecessary
+        cmd_id = command_client.robot_command(command)
+        block_until_arm_arrives(command_client, cmd_id)
+        
+        time.sleep(1)
 
         # Stow the arm
-        stow_arm(robot, 2.0)
+        # Build the stow command using RobotCommandBuilder
+        stow = RobotCommandBuilder.arm_stow_command()
+
+        # Issue the command via the RobotCommandClient
+        stow_command_id = command_client.robot_command(stow)
+
+        robot.logger.info('Stow command issued.')
+        block_until_arm_arrives(command_client, stow_command_id, 3.0)
         
         print("Piece placed successfully!")
     
