@@ -16,7 +16,8 @@ import bosdyn.client
 import bosdyn.client.estop
 import bosdyn.client.lease
 import bosdyn.client.util
-import bosdyn.client.math_helpers
+from bosdyn.client import math_helpers
+from bosdyn.geometry import EulerZXY
 from bosdyn.api import (
     world_object_pb2,
 )
@@ -42,100 +43,157 @@ from bosdyn.client.robot_state import RobotStateClient
 from dotenv import load_dotenv
 
 
-### By Ali
-# Get all detected fiducials 
-def get_fiducial_objects(world_object_client):
-    """Get all fiducial objects detected by Spot."""
+# Using Claude 3.5 Sonnet
+def detect_fiducial(world_object_client, fiducial_id):
+    # Request the latest world objects (including fiducials)
     request_fiducials = [world_object_pb2.WORLD_OBJECT_APRILTAG]
-    response = world_object_client.list_world_objects(object_type=request_fiducials)
-    return response.world_objects
-
-# Get a specific Fiducial ID
-def find_fiducial(world_object_client, fid_id):
-    fiducial_objects = get_fiducial_objects(world_object_client)
-
-    for fiducial in fiducial_objects:
-        if fiducial.apriltag_properties.tag_id == fid_id:
-            return fiducial
-    print(f"Fiducial with {fid_id} not found!")
+    fiducial_objects = world_object_client.list_world_objects(object_type=request_fiducials).world_objects
+    # Find the specified fiducial
+    for obj in fiducial_objects:
+        if obj.apriltag_properties and obj.apriltag_properties.tag_id == fiducial_id:
+            # Get the transform from vision frame to fiducial
+            vision_tform_fiducial = obj.transforms_snapshot.get_a_tform_b(
+                VISION_FRAME_NAME, obj.apriltag_properties.frame_name_fiducial)
+            
+            if vision_tform_fiducial:
+                return vision_tform_fiducial
     return None
 
-def move_arm(robot, target_position, target_orientation, reference_frame, duration):
-    command_client = robot.ensure_client(RobotCommandClient.default_service_name)
+def move_arm_to_fiducial(robot, command_client, fiducial_position):
+    # Convert the fiducial position to a pose
+    pose = math_helpers.SE3Pose(x=fiducial_position[0], y=fiducial_position[1], z=fiducial_position[2], 
+                                rot=EulerZXY(yaw=0, pitch=0, roll=0))
     
-    # Create the command to move the arm to the target position
+    # Create the arm command
     arm_command = RobotCommandBuilder.arm_pose_command(
-        target_position.x, target_position.y, target_position.z,
-        target_orientation.w, target_orientation.x, target_orientation.y,
-        target_orientation.z, reference_frame, duration
+        pose.x, pose.y, pose.z, pose.rot.yaw, pose.rot.pitch, pose.rot.roll,
+        frame_name=VISION_FRAME_NAME
     )
-
-    # Send the command and wait for the arm to arrive
+    
+    # Send the command to the robot
     cmd_id = command_client.robot_command(arm_command)
-    block_until_arm_arrives(command_client, cmd_id)
+    
+    # Wait for the command to complete
+    robot.time_sync.sleep_until(robot.time_sync.robot_timestamp_from_local_secs(time.time() + 5))
 
-
-
-def place_piece(robot, fid_id):
-    robot.time_sync.wait_for_sync()
-    command_client = robot.ensure_client(RobotCommandClient.default_service_name)
-    robot_state = robot.ensure_client(RobotStateClient.default_service_name)
-    world_object_client = robot.ensure_client(WorldObjectClient.default_service_name)
-
-
-    target_fiducial = find_fiducial(world_object_client, fid_id)
-    if not target_fiducial:
+def place_piece(robot, command_client, world_object_client, fiducial_id):
+    # Detect the fiducial
+    vision_tform_fiducial = detect_fiducial(world_object_client, fiducial_id)
+    
+    if vision_tform_fiducial is None:
+        print(f"Fiducial with ID {fiducial_id} not found.")
         return
-    # Assuming SPOT is ready to place piece: standing aligned to the refrence fiducial, arm stowed with TicTacToe piece
+    
+    # Get the position of the fiducial in the vision frame
+    fiducial_position = vision_tform_fiducial.get_translation()
+    
+    # Move the arm to a position slightly above the fiducial
+    above_position = (fiducial_position[0], fiducial_position[1], fiducial_position[2] + 0.3)
+    move_arm_to_fiducial(robot, command_client, above_position)
+    
+    # Move the arm down to make contact with the board
+    move_arm_to_fiducial(robot, command_client, fiducial_position)
+    
+    # Open the gripper to release the piece
+    gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(1.0)
+    command_client.robot_command(gripper_command)
+    
+    # Move the arm back up
+    move_arm_to_fiducial(robot, command_client, above_position)
 
-    vision_tform_fiducial = get_a_tform_b(
-        target_fiducial.transforms_snapshot, VISION_FRAME_NAME,
-        target_fiducial.apriltag_properties.frame_name_fiducial).to_proto()
-    if vision_tform_fiducial is not None:
-        fiducial_position = vision_tform_fiducial.position
-        fiducial_orientation = vision_tform_fiducial.orientation
+### chatgpt 4o / ali
+# Get all detected fiducials 
+# def get_fiducial_objects(world_object_client):
+#     """Get all fiducial objects detected by Spot."""
+#     request_fiducials = [world_object_pb2.WORLD_OBJECT_APRILTAG]
+#     response = world_object_client.list_world_objects(object_type=request_fiducials)
+#     return response.world_objects
 
-        # Calculate the intermediate approach position with fixed X
-        fixed_x = 0.5  # Adjust this value based on your environment for a safe approach
-        approach_position_yz = geometry_pb2.Vec3(
-            x=fixed_x,  # Fixed X position for safe approach
-            y=fiducial_position.y,
-            z=fiducial_position.z
-        )
+# # Get a specific Fiducial ID
+# def find_fiducial(world_object_client, fid_id):
+#     fiducial_objects = get_fiducial_objects(world_object_client)
 
-        # Calculate the final approach position
-        final_approach_position = geometry_pb2.Vec3(
-            x=fiducial_position.x,  # Move to the exact X position of the fiducial
-            y=fiducial_position.y,
-            z=fiducial_position.z
-        )
+#     for fiducial in fiducial_objects:
+#         if fiducial.apriltag_properties.tag_id == fid_id:
+#             return fiducial
+#     print(f"Fiducial with {fid_id} not found!")
+#     return None
 
-        # Move the arm along Y and Z axes first with fixed X
-        move_arm(robot, approach_position_yz, fiducial_orientation, VISION_FRAME_NAME, 2.0)
+# def move_arm(robot, target_position, target_orientation, reference_frame, duration):
+#     command_client = robot.ensure_client(RobotCommandClient.default_service_name)
+    
+#     # Create the command to move the arm to the target position
+#     arm_command = RobotCommandBuilder.arm_pose_command(
+#         target_position.x, target_position.y, target_position.z,
+#         target_orientation.w, target_orientation.x, target_orientation.y,
+#         target_orientation.z, reference_frame, duration
+#     )
 
-        # Finally, move the arm along the X axis to place the piece
-        move_arm(robot, final_approach_position, fiducial_orientation, VISION_FRAME_NAME, 2.0)
+#     # Send the command and wait for the arm to arrive
+#     cmd_id = command_client.robot_command(arm_command)
+#     block_until_arm_arrives(command_client, cmd_id)
 
 
-        # Open the gripper to release the piece
-        gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(1.0)
-        command = RobotCommandBuilder.build_synchro_command(gripper_command)            # build_synchro_command may be unnecessary
-        cmd_id = command_client.robot_command(command)
-        block_until_arm_arrives(command_client, cmd_id)
+# def place_piece(robot, fid_id):
+#     robot.time_sync.wait_for_sync()
+#     command_client = robot.ensure_client(RobotCommandClient.default_service_name)
+#     robot_state = robot.ensure_client(RobotStateClient.default_service_name)
+#     world_object_client = robot.ensure_client(WorldObjectClient.default_service_name)
+
+
+#     target_fiducial = find_fiducial(world_object_client, fid_id)
+#     if not target_fiducial:
+#         return
+#     # Assuming SPOT is ready to place piece: standing aligned to the refrence fiducial, arm stowed with TicTacToe piece
+
+#     vision_tform_fiducial = get_a_tform_b(
+#         target_fiducial.transforms_snapshot, VISION_FRAME_NAME,
+#         target_fiducial.apriltag_properties.frame_name_fiducial).to_proto()
+#     if vision_tform_fiducial is not None:
+#         fiducial_position = vision_tform_fiducial.position
+#         fiducial_orientation = vision_tform_fiducial.orientation
+
+#         # Calculate the intermediate approach position with fixed X
+#         fixed_x = 0.5  # Adjust this value based on your environment for a safe approach
+#         approach_position_yz = geometry_pb2.Vec3(
+#             x=fixed_x,  # Fixed X position for safe approach
+#             y=fiducial_position.y,
+#             z=fiducial_position.z
+#         )
+
+#         # Calculate the final approach position
+#         final_approach_position = geometry_pb2.Vec3(
+#             x=fiducial_position.x,  # Move to the exact X position of the fiducial
+#             y=fiducial_position.y,
+#             z=fiducial_position.z
+#         )
+
+#         # Move the arm along Y and Z axes first with fixed X
+#         move_arm(robot, approach_position_yz, fiducial_orientation, VISION_FRAME_NAME, 2.0)
+
+#         # Finally, move the arm along the X axis to place the piece
+#         move_arm(robot, final_approach_position, fiducial_orientation, VISION_FRAME_NAME, 2.0)
+
+
+#         # Open the gripper to release the piece
+#         gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(1.0)
+#         command = RobotCommandBuilder.build_synchro_command(gripper_command)            # build_synchro_command may be unnecessary
+#         cmd_id = command_client.robot_command(command)
+#         block_until_arm_arrives(command_client, cmd_id)
         
-        time.sleep(1)
+#         time.sleep(1)
 
-        # Stow the arm
-        # Build the stow command using RobotCommandBuilder
-        stow = RobotCommandBuilder.arm_stow_command()
+#         # Stow the arm
+#         # Build the stow command using RobotCommandBuilder
+#         stow = RobotCommandBuilder.arm_stow_command()
 
-        # Issue the command via the RobotCommandClient
-        stow_command_id = command_client.robot_command(stow)
+#         # Issue the command via the RobotCommandClient
+#         stow_command_id = command_client.robot_command(stow)
 
-        robot.logger.info('Stow command issued.')
-        block_until_arm_arrives(command_client, stow_command_id, 3.0)
+#         robot.logger.info('Stow command issued.')
+#         block_until_arm_arrives(command_client, stow_command_id, 3.0)
         
-        print("Piece placed successfully!")
+#         print("Piece placed successfully!")
     
 
 
