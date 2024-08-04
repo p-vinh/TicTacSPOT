@@ -129,6 +129,27 @@ def convertTo2DArray(markerIds):
         ret.append(markerIds[i][0])
     return ret
     
+def move_backward(robot, distance_meters):
+    command_client = robot.ensure_client(RobotCommandClient.default_service_name)
+    
+    # Set up mobility parameters to include obstacle avoidance.
+    mobility_params = RobotCommandBuilder.mobility_params(
+        obstacle_avoidance_enabled=True,
+        speed_limit=1.0,  # Adjust the speed as necessary
+    )
+
+    # Build the command to move backward with obstacle avoidance.
+    cmd = RobotCommandBuilder.synchro_se2_trajectory_point_command(
+        goal_x=-distance_meters,  # Negative value for moving backward
+        goal_y=0.0,
+        goal_heading=0.0,
+        frame_name=ODOM_FRAME_NAME,
+        params=mobility_params
+    )
+
+    # Issue the command.
+    command_id = command_client.robot_command(cmd)
+    time.sleep(3.5)
 # example python main.py -s tictactoe -m my_efficient_model -c 0.85 -d 0.5 --avoid-obstacles True
 
 #==================================Main Function===================================================
@@ -264,7 +285,7 @@ def main():
                 # 6. Orient itself back to the refrence point
                 # Assuming when it placed its piece, it's too close to the board, so perhaps slowly back up some distance and than orient itself to the refrence.
 
-                backup(1.5)
+                move_backward(robot, 1.5)
                 # ^ create some function, now refrence fiducial should be in frame, lets go to the correct amount of distance to it?
                 # like this?
                 class_obj = follow.fiducial_follow(robot, options, BOARD_REF)
@@ -279,7 +300,7 @@ def main():
             print("Player wins")
             # break
         elif piece == None:
-            print("No one won yet")
+            print("Draw!")
             
             
 
