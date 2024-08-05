@@ -53,7 +53,7 @@ class BoardInput:
 
     def printBoardInfo(self):
         print("Previous Board State:")
-        self.printBoard()
+        self.printPreviousBoard()
         print("Current Board State:")
         self.printBoard()
         print("\nTotal X Pieces: ", self.totalXPieces)
