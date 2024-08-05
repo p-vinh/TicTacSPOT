@@ -76,6 +76,12 @@ class BoardInput:
                 for j in range(3):
                     if self.initialBoardState[i][j] == missingId and self.boardState[i][j] not in ['X', 'O']:
                         newBoardState[i][j] = move
+                        if(move == 'O'):
+                            self.addOPiece()
+                        elif move == 'X':
+                            self.addXPiece()
+                        else:
+                            print(f"Move: '{move}' is neither 'X' or 'O")
                         # Update previous board
                         self.previousBoardState = copy.deepcopy(self.boardState) 
                         self.boardState = newBoardState

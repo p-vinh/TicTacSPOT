@@ -76,7 +76,9 @@ def move_arm_to_fiducial(robot, command_client, fiducial_position):
     # Wait for the command to complete
     robot.time_sync.sleep_until(robot.time_sync.robot_timestamp_from_local_secs(time.time() + 5))
 
-def place_piece(robot, command_client, world_object_client, fiducial_id):
+def place_piece(robot, fiducial_id):
+    command_client = robot.ensure_client(RobotCommandClient.default_service_name)
+    world_object_client = robot.ensure_client(WorldObjectClient.default_service_name)
     # Detect the fiducial
     vision_tform_fiducial = detect_fiducial(world_object_client, fiducial_id)
     
