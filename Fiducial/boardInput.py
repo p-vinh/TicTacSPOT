@@ -3,22 +3,23 @@ import copy
 class BoardInput:
 
     #initialize values
-    def __init__(self):
+    def __init__(self, initial_values=None):
         self.totalXPieces = 0
         self.totalOPieces = 0
         self.totalCountPieces = 0
 
-        #Untouched inital board. Will only hold the ids of the board.
-        self.totalBoardState = [[0, 1, 2],
-                                [3, 4, 5],
-                                [6, 7, 8]]
+        if initial_values is None:
+            # Didn't use list as default argument because mutable default arguments are shared across instances (They're not re-initalized for each instance)
+            initial_values = [1,2,3,4,5,6,7,8,9]
+            
+        self.initialBoardState = [
+            [initial_values[0], initial_values[1], initial_values[2]],
+            [initial_values[3], initial_values[4], initial_values[5]],
+            [initial_values[6], initial_values[7], initial_values[8]]
+            ]
+        self.boardState = copy.deepcopy(self.initialBoardState)
+        self.previousBoardState = copy.deepcopy(self.boardState)         
 
-        # These values will be replaced by X or O, to keep track of the X and O pieces
-        self.boardState = [[0, 1, 2],
-                           [3, 4, 5],
-                           [6, 7, 8]]
-
-        self.previousBoard = copy.deepcopy(self.boardState)
     
     #Call this function to change the ids initially. Default is 0,1,2,3,4,5,6,7,8
     def changeInitialState(self, initial_values):
@@ -28,60 +29,57 @@ class BoardInput:
             [initial_values[6], initial_values[7], initial_values[8]]
         ]
         self.previousBoard = copy.deepcopy(self.boardState)
-        self.totalBoardState = copy.deepcopy(self.boardState)
+        self.initialBoardState = copy.deepcopy(self.boardState)
     
     def printBoard(self):
         for row in self.boardState:
             for element in row:
                 print(element, end=" ")
             print()
-    
-    def updateTotalPieces(self):
-        self.totalCountPieces = self.totalXPieces + self.totalOPieces
-    
+
+    def printPreviousBoard(self):
+        for row in self.previousBoardState:
+            for element in row:
+                print(element, end=" ")
+            print()
+
     def addXPiece(self):
         self.totalXPieces += 1
-    
+        self.totalCountPieces += 1
+
     def addOPiece(self):
         self.totalOPieces += 1
+        self.totalCountPieces += 1
 
-    def checkValidInput(self, listOfId):
-        #we delated +1 for this line below
-        if len(listOfId) + self.totalCountPieces == 9:
-            return True
-        else:
-            return False
+    def printBoardInfo(self):
+        print("Previous Board State:")
+        self.printBoard()
+        print("Current Board State:")
+        self.printBoard()
+        print("\nTotal X Pieces: ", self.totalXPieces)
+        print("Total O Pieces: ", self.totalOPieces)
+        print("Total Count of Pieces: ", self.totalCountPieces)
 
-    def spotUpdateBoard(self, move):
-        print("SPOT Turn: Recording Move")
-        newList = list(move)
-        self.boardState[newList[0]][newList[1]] = 'X'
-        print(self.boardState)
-        print(self.previousBoard)
-
-    def updateBoard(self, listOfId, player):
+    def updateBoard(self, currentIDs, move):
         newBoardState = copy.deepcopy(self.boardState)
-    
-        for i in range(3):
-            for j in range(3):
-                #If id is not detected, does not contain an X piece or O piece already, that is where the player most likely placed their piece
-                #Update board
-                if self.totalBoardState[i][j] not in listOfId and self.boardState[i][j] != 'X' and self.boardState[i][j] != 'O':
-                    newBoardState[i][j] = player
-        self.boardState = newBoardState
 
+        # Flatten the initial board state to get a list of IDs
+        flat_initial_ids = sum(self.initialBoardState, [])
 
-    # Determines the difference between the previous board and the updated board
-    # Returns the coordinates of the array to update visual representation
-    def determineChanges(self):
-        coordinatesThatChanged = []
-        for i in range(3):
-            for j in range(3):
-                if self.previousBoard[i][j] != self.boardState[i][j]:
-                    coordinatesThatChanged.append((i, j))
-        self.previousBoard = self.boardState
-        return coordinatesThatChanged
+        # Find the ID that is no longer detected
+        missingId = set(flat_initial_ids) - set(currentIDs)
+        
+        if missingId:
+            missingId = missingId.pop()  # Get the missing ID
 
+            for i in range(3):
+                for j in range(3):
+                    if self.initialBoardState[i][j] == missingId and self.boardState[i][j] not in ['X', 'O']:
+                        newBoardState[i][j] = move
+                        # Update previous board
+                        self.previousBoardState = copy.deepcopy(self.boardState) 
+                        self.boardState = newBoardState
+                        return
 
     #Getter functions
     def getXPieces(self):
@@ -95,3 +93,6 @@ class BoardInput:
 
     def getBoardState(self):
         return self.boardState
+    
+    def getPreviousBoardState(self):
+        return self.previousBoardState
