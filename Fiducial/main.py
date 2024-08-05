@@ -38,7 +38,6 @@ LIST_IDS = [530, 531, 532, 533, 534, 535, 536, 537, 538]
 BODY_LENGTH = 1.1
 
 
-
 def verify_estop(robot):
     """Verify the robot is not estopped"""
 
@@ -53,35 +52,33 @@ def verify_estop(robot):
 #Call this function to start and detect board fiducials
 # - Returns a set of fiducials when it finds the expected number of fiducials
 
-def detectFiducial(expectedNumberOfFiducials, pitch):
-        
+def detectFiducial(expectedNumberOfFiducials, pitch, reset_pitch = 0):
     # Clamp Pitch
-    max_pitch = 0.45
-    pitch = min(pitch, max_pitch)
-    change_pitch(pitch)
+    pitch = min(pitch, 0.45)
 
+    # Base case to prevent infinite recursion
+    if pitch < -0.45:
+        print("Could not detect expected # of fiducials!")
+        print(f"Pitch reached: {pitch}")
+        print(f"Resetting pitch to {reset_pitch}")
+        change_pitch(reset_pitch)
+        return None
+    
+    change_pitch(pitch)
     time.sleep(0.5)
     
-    found = 0
-    maxNumberOfIterations = 30
-    fiducial = set()
-    detect = False
-    while found != expectedNumberOfFiducials and maxNumberOfIterations > 0:
-        # Get the all fiducial objects
-        fiducial = find_fiducials()
-        if fiducial is not None:
-            found = len(fiducial)
-            detect = True
-        if detect:
-            print(fiducial, found, maxNumberOfIterations)
-        maxNumberOfIterations-= 1
+    for i in range(30):
+        fiducials = find_fiducials()
+        if fiducials and len(fiducials) == expectedNumberOfFiducials:
+            print(fiducials, len(fiducials), 30 - i)
+            print(f"Resetting pitch to {reset_pitch}")
+            change_pitch(reset_pitch)
+            return fiducials
+        time.sleep(0.1)
     
-    if found == expectedNumberOfFiducials:
-        return fiducial
-    elif maxNumberOfIterations <= 0:
-        pitch -= 0.1
-        return detectFiducial(expectedNumberOfFiducials, pitch)
-
+    return detectFiducial(expectedNumberOfFiducials, pitch - 0.1)
+    
+    
 
         
 def change_pitch(pitch):
@@ -92,22 +89,26 @@ def change_pitch(pitch):
     
 #Find Fiducials and return a set of id numbers
 def find_fiducials():
-     #Get all fiducials that Spot detects with its perception system.
-        # Get all fiducial objects (an object of a specific type).
-        request_fiducials = [world_object_pb2.WORLD_OBJECT_APRILTAG]
-        fiducial_objects = _world_object_client.list_world_objects(object_type=request_fiducials).world_objects
-        if len(fiducial_objects) > 0:
-            ids = set()
-            # Find fiducials id
-            for fiducial in fiducial_objects:
-                if(fiducial.apriltag_properties.tag_id != BOARD_REF): #Ignore fiducial id that represents the board
-                    ids.add(fiducial.apriltag_properties.tag_id)
-            #IMPORTANT, it sorts the list of IDS in order
-            sorted_list = sorted(ids)
-            
-            return sorted_list
-        # Return none if no fiducials are found.
-        return None
+    """
+    Retrieve all fiducials detected by Spot's perception system,
+    excluding the fiducial that represents the board.
+    """
+
+    # Request fiducials of type AprilTags
+    request_fiducials = [world_object_pb2.WORLD_OBJECT_APRILTAG]
+
+    fiducial_objects = _world_object_client.list_world_objects(object_type=request_fiducials).world_objects
+    if len(fiducial_objects) > 0:
+        ids = set()
+        # Find fiducials id
+        for fiducial in fiducial_objects:
+            if(fiducial.apriltag_properties.tag_id != BOARD_REF): #Ignore fiducial id that represents the board
+                ids.add(fiducial.apriltag_properties.tag_id)
+        #IMPORTANT, it sorts the list of IDS in order
+        return sorted(ids)
+
+    # Return none if no fiducials are found.
+    return None
 
 #needed for SPOT to detect fiducials 
 def check_if_version_has_world_objects(self, robot_id):
@@ -128,6 +129,27 @@ def convertTo2DArray(markerIds):
         ret.append(markerIds[i][0])
     return ret
     
+def move_backward(robot, distance_meters):
+    command_client = robot.ensure_client(RobotCommandClient.default_service_name)
+    
+    # Set up mobility parameters to include obstacle avoidance.
+    mobility_params = RobotCommandBuilder.mobility_params(
+        obstacle_avoidance_enabled=True,
+        speed_limit=1.0,  # Adjust the speed as necessary
+    )
+
+    # Build the command to move backward with obstacle avoidance.
+    cmd = RobotCommandBuilder.synchro_se2_trajectory_point_command(
+        goal_x=-distance_meters,  # Negative value for moving backward
+        goal_y=0.0,
+        goal_heading=0.0,
+        frame_name=ODOM_FRAME_NAME,
+        params=mobility_params
+    )
+
+    # Issue the command.
+    command_id = command_client.robot_command(cmd)
+    time.sleep(3.5)
 # example python main.py -s tictactoe -m my_efficient_model -c 0.85 -d 0.5 --avoid-obstacles True
 
 #==================================Main Function===================================================
@@ -189,21 +211,16 @@ def main():
         blocking_stand(command_client)
         time.sleep(.35)
 
-        #------------------------------Initialize Values-------------------------------------
-        #Put id values of board in this order:
-        #       Ex: initial_values = [0,1,2,3,4,5,6,7,8]
-        #          
-        #     Represents a board with ids in this order...
-        #           0 1 2
-        #           3 4 5
-        #           6 7 8
-        initial_values = LIST_IDS
-        expectedNumberOfFiducials = 8
-        player = ttt.O
+        #perhaps raise Spot taller to increase perception of the board
+        # height = .2
+        # cmd = RobotCommandBuilder.synchro_stand_command(body_height=height)
+        # command_client.robot_command(cmd)
+        # robot.logger.info('Set body height to {}'.format(height))
 
-        #Player expected to be first
-        board = bi.BoardInput()
-        board.changeInitialState(initial_values)
+        expectedNumberOfFiducials = 9
+        playerTurn = ttt.O
+        spotTurn = ttt.X
+        board = bi.BoardInput(LIST_IDS)
         board.printBoard()
         
          
@@ -212,90 +229,78 @@ def main():
         print("Robot Initial Coords:")
         print(robot_initial_coords.position)
         
-        # #Get Fiducials
-        # # while loop insert here <----------Game Loop starts
-        while(expectedNumberOfFiducials > 0)  : 
-            # #1. Find Fidicials and Update Board ----> Player move
-            # #Have Spot twist up to see all fiducials        
-            ids = detectFiducial(expectedNumberOfFiducials, -0.2) #list of id and postion (aka coord) pairs
-            board.updateBoard(ids, player) #updates board
-            
-            print("Detection done, found players move....")
-            print("-----------------Board State:-------------")
-            board.printBoard()
-            board.addOPiece()
-            board.updateTotalPieces()
-            print("Player pieces:", board.getOPieces())
-            print("SPOT's Pieces: ", board.getXPieces())
-            print("Total Pieces on board: ", board.getTotalPieces())
-            print("------------------------------------------")
+        # 1. Find Fidicials and Update Board 
+        # Assuming player initially placed an O piece on the board (player went when there was 9 (odd number) open fiducials)
+        print("Player's turn!")
+        expectedNumberOfFiducials -= 1
+        ids = detectFiducial(expectedNumberOfFiducials, -0.2)
+        board.updateBoard(ids, playerTurn)
 
-            # #Have SPOT go back to stand position
-            goBackToSame =  bosdyn.geometry.EulerZXY(yaw=0.0, roll=0.0, pitch=0.0)
-            cmd2 = RobotCommandBuilder.synchro_stand_command(footprint_R_body=goBackToSame)
-            command_client.robot_command(cmd2)
-            robot.logger.info('Robot is back to stand position')
-            time.sleep(3)
-            
-            # #2. Minimax
-            move, id = ttt.minimax(board.getBoardState())
-            
-            #3. Pick Piece
-            robot.logger.info('Sending Robot Pickup Request')
-            fetch.pick_up(options, robot)
-            time.sleep(1) # Wait for pickup to finish
-            print(move, id)
-            
-            # 4. Set up Position
-            print("Placing Piece....")
-            
-            # Go back to original position
-            # obj = goTo.headToNewCoords(robot, options, robot_initial_coords)
-            
-            time.sleep(1)
-            
-            #Go to Fiducial
-            class_obj = follow.fiducial_follow(robot, options, BOARD_REF)
-            
-            # We want to tilt until we see the whole board:
-            
-            detectFiducial(expectedNumberOfFiducials, -0.2)
-            
-            # 5. Place Piece
-            place.place_piece(robot, id)
-            
-            # 6. Backup From Reference Point
-            class_obj.backup_from_reference(1.5) # Backup 1.1 meters from reference point
-            
-            
-            # 7. Gameover?
-            piece = ttt.winner(board.getBoardState())
-            if piece == ttt.X:
-                print("Spot wins")
-                # DANCE
-                # break For infinite game loop
-            elif piece == ttt.O:
-                print("Player wins")
-                # break
-            elif piece == None:
-                print("No one won yet")
-                # break
-            
-            # Wait for player to place their piece
-            #might need to addPiece after this, but then question is how does the board keep track of it
-            
-                        # placedpieces = [531(O)]       
+        board.printBoardInfo()
 
-            #Spot placed piece, now append to the list
-            player = ttt.X
-            board.updateBoard(ids, player) #updates board
 
-            #Now player puts his piece, append to the list    
-            time.sleep(10)    #Waits for player for 10s, will change later to get player input instead
-            player = ttt.O
-            board.updateBoard(ids, player) #updates board
+        # Continue game until board is filled up
+        while(expectedNumberOfFiducials > 0):
+            # Deciding who's turn
+            if(expectedNumberOfFiducials % 2 == 0):
+                currentTurn = spotTurn
+            else:
+                currentTurn = playerTurn
+
+            if(currentTurn == playerTurn):
+                print("Player's turn!")
+                time.sleep(15) # Wait for player to place piece
+                expectedNumberOfFiducials -= 1
+                ids = detectFiducial(expectedNumberOfFiducials, -0.2)
+                board.updateBoard(ids, playerTurn)
+
+                board.printBoardInfo()
+            else:
+                # currentTurn is Spots!
+                print("Spot's turn!")
+                # Calculate move
+                move, id = ttt.minimax(board.getBoardState())
+
+                # 3. Pick up piece
+                robot.logger.info('Sending Robot Pickup Request')
+                fetch.pick_up(options, robot)
+                time.sleep(1) # Wait for pickup to finish
+                print(move, id)
             
-            expectedNumberOfFiducials -= 2
+                # 4. Orient to the board using refrence fiducial
+                print("Orienting to the board.")
+                class_obj = follow.fiducial_follow(robot, options, BOARD_REF)
+
+                # 5. Place piece
+                detectFiducial(expectedNumberOfFiducials, -0.2)     # Perhaps delete this as I reset pitch anyways? Can test with/without to see what's better, maybe remove the resetpitch within the function and do it selectively so that we can take advantage of the detectFiducial function here to put us in a position where we see the desired fiducials
+
+                place.place_piece(robot, id)
+
+                expectedNumberOfFiducials -= 1
+                ids = detectFiducial(expectedNumberOfFiducials, -0.2)
+                board.updateBoard(ids, playerTurn)
+
+                board.printBoardInfo()
+
+                # 6. Orient itself back to the refrence point
+                # Assuming when it placed its piece, it's too close to the board, so perhaps slowly back up some distance and than orient itself to the refrence.
+
+                move_backward(robot, 1.5)
+                # ^ create some function, now refrence fiducial should be in frame, lets go to the correct amount of distance to it?
+                # like this?
+                class_obj = follow.fiducial_follow(robot, options, BOARD_REF)
+                class_obj.backup_from_reference(1.5) 
+        # Expected number of fiducials is 0
+        piece = ttt.winner(board.getBoardState())
+        if piece == ttt.X:
+            print("Spot wins")
+            # DANCE
+            # break For infinite game loop
+        elif piece == ttt.O:
+            print("Player wins")
+            # break
+        elif piece == None:
+            print("Draw!")
          
             
 
