@@ -10,11 +10,14 @@ import argparse
 import time
 import fiducial_follow as follow
 
+from bosdyn.api import geometry_pb2
+
 import bosdyn.client
 import bosdyn.client.estop
 import bosdyn.client.lease
 import bosdyn.client.util
-import bosdyn.client.math_helpers
+from bosdyn.client import math_helpers
+from bosdyn.geometry import EulerZXY
 from bosdyn.api import (
     world_object_pb2,
 )
@@ -39,14 +42,73 @@ from bosdyn.client.math_helpers import Quat
 from bosdyn.client.robot_state import RobotStateClient
 from dotenv import load_dotenv
 
-###
+
+# Using Claude 3.5 Sonnet
+def detect_fiducial(world_object_client, fiducial_id):
+    # Request the latest world objects (including fiducials)
+    request_fiducials = [world_object_pb2.WORLD_OBJECT_APRILTAG]
+    fiducial_objects = world_object_client.list_world_objects(object_type=request_fiducials).world_objects
+    # Find the specified fiducial
+    for obj in fiducial_objects:
+        if obj.apriltag_properties and obj.apriltag_properties.tag_id == fiducial_id:
+            # Get the transform from vision frame to fiducial
+            vision_tform_fiducial = obj.transforms_snapshot.get_a_tform_b(
+                VISION_FRAME_NAME, obj.apriltag_properties.frame_name_fiducial)
+            
+            if vision_tform_fiducial:
+                return vision_tform_fiducial
+    return None
+
+def move_arm_to_fiducial(robot, command_client, fiducial_position):
+    # Convert the fiducial position to a pose
+    pose = math_helpers.SE3Pose(x=fiducial_position[0], y=fiducial_position[1], z=fiducial_position[2], 
+                                rot=EulerZXY(yaw=0, pitch=0, roll=0))
+    
+    # Create the arm command
+    arm_command = RobotCommandBuilder.arm_pose_command(
+        pose.x, pose.y, pose.z, pose.rot.yaw, pose.rot.pitch, pose.rot.roll,
+        frame_name=VISION_FRAME_NAME
+    )
+    
+    # Send the command to the robot
+    cmd_id = command_client.robot_command(arm_command)
+    
+    # Wait for the command to complete
+    robot.time_sync.sleep_until(robot.time_sync.robot_timestamp_from_local_secs(time.time() + 5))
+
+def place_piece(robot, command_client, world_object_client, fiducial_id):
+    # Detect the fiducial
+    vision_tform_fiducial = detect_fiducial(world_object_client, fiducial_id)
+    
+    if vision_tform_fiducial is None:
+        print(f"Fiducial with ID {fiducial_id} not found.")
+        return
+    
+    # Get the position of the fiducial in the vision frame
+    fiducial_position = vision_tform_fiducial.get_translation()
+    
+    # Move the arm to a position slightly above the fiducial
+    above_position = (fiducial_position[0], fiducial_position[1], fiducial_position[2] + 0.3)
+    move_arm_to_fiducial(robot, command_client, above_position)
+    
+    # Move the arm down to make contact with the board
+    move_arm_to_fiducial(robot, command_client, fiducial_position)
+    
+    # Open the gripper to release the piece
+    gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(1.0)
+    command_client.robot_command(gripper_command)
+    
+    # Move the arm back up
+    move_arm_to_fiducial(robot, command_client, above_position)
+
+
+'''
 #by Deyi, this might solve the placement issue, and this function will be integate in place_piece function
 def control_gripper(command_client, open_fraction):
     gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(open_fraction)
     command = RobotCommandBuilder.build_synchro_command(gripper_command)
     cmd_id = command_client.robot_command(command)
     block_until_arm_arrives(command_client, cmd_id, 5.0)
-
 
 
 def place_piece(robot, fid_id):
@@ -151,7 +213,7 @@ def place_piece(robot, fid_id):
     (
         command_client, command_client.robot_command(stow), 3.0
     )
-
+'''
 
 # Testing function
 if __name__ == "__main__":
