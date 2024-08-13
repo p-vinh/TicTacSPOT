@@ -77,9 +77,6 @@ def detectFiducial(expectedNumberOfFiducials, pitch, reset_pitch = 0):
         time.sleep(0.1)
     
     return detectFiducial(expectedNumberOfFiducials, pitch - 0.1)
-    
-    
-
         
 def change_pitch(pitch):
     footprint_R_body = bosdyn.geometry.EulerZXY(yaw=0.0, roll=0.0, pitch=pitch)
@@ -231,7 +228,7 @@ def main():
         
         # 1. Find Fidicials and Update Board 
         # Assuming player initially placed an O piece on the board (player went when there was 9 (odd number) open fiducials)
-        print("Player's turn!")
+        print("Player's turn! Assuming player has already placed O piece on board")
         expectedNumberOfFiducials -= 1
         ids = detectFiducial(expectedNumberOfFiducials, -0.2)
         board.updateBoard(ids, playerTurn)
@@ -272,7 +269,7 @@ def main():
                 class_obj = follow.fiducial_follow(robot, options, BOARD_REF)
 
                 # 5. Place piece
-                detectFiducial(expectedNumberOfFiducials, -0.2)     # Perhaps delete this as I reset pitch anyways? Can test with/without to see what's better, maybe remove the resetpitch within the function and do it selectively so that we can take advantage of the detectFiducial function here to put us in a position where we see the desired fiducials
+                # detectFiducial(expectedNumberOfFiducials, -0.2)     # Perhaps delete this as I reset pitch anyways? Can test with/without to see what's better, maybe remove the resetpitch within the function and do it selectively so that we can take advantage of the detectFiducial function here to put us in a position where we see the desired fiducials
 
                 place.place_piece(robot, id)
 
