@@ -83,33 +83,36 @@ def place_piece(robot, fiducial_id):
         return
    
    
-    # Create the SE3Pose for the root frame to align the gripper over the fiducial
-    root_tform_task = geometry_pb2.SE3Pose(
-        position=geometry_pb2.Vec3(x=0.0, y=0.0, z=0.0),  # Adjust Z if necessary to ensure placement
-        rotation=geometry_pb2.Quaternion(w=1.0, x=0.0, y=0.0, z=0.0)
-    )
+    # Define the position and orientation for the arm to move to
+    
+    x = 0.0  # Adjust these values based on your target location
+    y = 0.0
+    z = 0.0  # Adjust Z for height if necessary
+    qw = 1.0  # No rotation (identity quaternion)
+    qx = 0.0
+    qy = 0.0
+    qz = 0.0
 
-    # Define the wrist transform to align the X piece properly over the fiducial
-    wrist_tform_tool = geometry_pb2.SE3Pose(
-        position=geometry_pb2.Vec3(x=0.0, y=0.0, z=0.0),  # Offset for the X piece to align with the center of the fiducial
-        rotation=geometry_pb2.Quaternion(w=1.0, x=0.0, y=0.0, z=0.0)
-    )
-
-    # Creating a Cartesian Move Request
-    arm_cartesian_command = arm_command_pb2.ArmCartesianCommand.Request(
-        root_frame_name=fiducial_frame_name,
-        root_tform_task=root_tform_task,
-        wrist_tform_tool=wrist_tform_tool
-    )
-
-    # Create a synchronized command for the robot
-    synchro_command = synchronized_command_pb2.SynchronizedCommand.Request(
-        arm_command=arm_command_pb2.ArmCommand.Request(cartesian_command=arm_cartesian_command)
+    # Build the arm pose command
+    #these values are FROM the fiducial frame, so (0,0,0) would intuitively be the center of the fiducial frame. 
+    # X is the arrow pointing out (+) and in (-) of the fiducial
+    # Y represents left and right
+    # Z represents up and down
+    arm_pose_command = RobotCommandBuilder.arm_pose_command(
+        x=x,
+        y=y,
+        z=z,
+        qw=qw,
+        qx=qx,
+        qy=qy,
+        qz=qz,
+        frame_name=fiducial_frame_name,
+        seconds=5  # Duration to achieve the pose
     )
 
     # Send the command to the robot
-    command_client = robot.ensure_client('arm-command-service')
-    response = command_client.robot_command(command=synchro_command)
+    command_client.robot_command(arm_pose_command)
+
 
     print(f"Placing X piece on fiducial {fiducial_id}")
 

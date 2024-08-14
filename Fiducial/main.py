@@ -125,28 +125,32 @@ def convertTo2DArray(markerIds):
     for i in range(len(markerIds)):
         ret.append(markerIds[i][0])
     return ret
-    
-def move_backward(robot, distance_meters):
+
+
+
+def return_to_initial_position(robot, initial_coords):
     command_client = robot.ensure_client(RobotCommandClient.default_service_name)
     
-    # Set up mobility parameters to include obstacle avoidance.
+    # Set up the mobility parameters (you can customize these as needed)
     mobility_params = RobotCommandBuilder.mobility_params(
-        obstacle_avoidance_enabled=True,
-        speed_limit=1.0,  # Adjust the speed as necessary
+        obstacle_avoidance_enabled=True
     )
 
-    # Build the command to move backward with obstacle avoidance.
+    # Build the SE2Trajectory command to move the robot back to its initial position
     cmd = RobotCommandBuilder.synchro_se2_trajectory_point_command(
-        goal_x=-distance_meters,  # Negative value for moving backward
-        goal_y=0.0,
-        goal_heading=0.0,
-        frame_name=ODOM_FRAME_NAME,
+        goal_x=initial_coords.position.x,
+        goal_y=initial_coords.position.y,
+        goal_heading=initial_coords.rotation.yaw,  # Adjust to the original heading
+        frame_name=VISION_FRAME_NAME,
         params=mobility_params
     )
 
-    # Issue the command.
+    # Send the command to the robot
     command_id = command_client.robot_command(cmd)
-    time.sleep(3.5)
+    time.sleep(3.5)  # Allow time for the robot to move
+    robot.logger.info("Returning to initial position complete.")
+
+    
 # example python main.py -s tictactoe -m my_efficient_model -c 0.85 -d 0.5 --avoid-obstacles True
 
 #==================================Main Function===================================================
@@ -266,6 +270,7 @@ def main():
             
                 # 4. Orient to the board using refrence fiducial
                 print("Orienting to the board.")
+                return_to_initial_position(robot, robot_initial_coords)
                 class_obj = follow.fiducial_follow(robot, options, BOARD_REF)
 
                 # 5. Place piece
@@ -279,15 +284,11 @@ def main():
 
                 board.printBoardInfo()
 
-                # 6. Orient itself back to the refrence point
-                # Assuming when it placed its piece, it's too close to the board, so perhaps slowly back up some distance and than orient itself to the refrence.
-
-                move_backward(robot, 1.5)
-                # ^ create some function, now refrence fiducial should be in frame, lets go to the correct amount of distance to it?
+                # 6. Orient itself back to board
                 # like this?
+                return_to_initial_position(robot, robot_initial_coords)
                 class_obj = follow.fiducial_follow(robot, options, BOARD_REF)
-                class_obj.backup_from_reference(1.5) 
-        # Expected number of fiducials is 0
+        # Expected number of fiducials is 0, the fiducials are covered with pieces
         piece = ttt.winner(board.getBoardState())
         if piece == ttt.X:
             print("Spot wins")
