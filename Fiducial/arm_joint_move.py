@@ -68,12 +68,10 @@ def place_piece(robot, fiducial_id):
     # For arm's perspective X (Forward), Y (Left and Right), and Z (Up and Down)
     command_client = robot.ensure_client(RobotCommandClient.default_service_name)
     world_object_client = robot.ensure_client(WorldObjectClient.default_service_name)
-    
+
     # Unstow (ready) the arm
     unstow_command = RobotCommandBuilder.arm_ready_command()
-    # Send the command and block until the arm reaches the ready position
     block_until_arm_arrives(command_client, command_client.robot_command(unstow_command), 3.0)
-
 
     # Detect Fiducial and its frame name
     fiducial_frame_name = detect_fiducial(world_object_client, fiducial_id)
@@ -81,47 +79,51 @@ def place_piece(robot, fiducial_id):
     if fiducial_frame_name is None:
         print(f"Fiducial with ID {fiducial_id} not found.")
         return
-   
-   
-    # Define the position and orientation for the arm to move to
-    
-    x = 0.0  # Adjust these values based on your target location
-    y = 0.0
-    z = 0.0  # Adjust Z for height if necessary
-    qw = 1.0  # No rotation (identity quaternion)
-    qx = 0.0
-    qy = 0.0
-    qz = 0.0
 
-    # Build the arm pose command
-    #these values are FROM the fiducial frame, so (0,0,0) would intuitively be the center of the fiducial frame. 
-    # X is the arrow pointing out (+) and in (-) of the fiducial
-    # Y represents left and right
-    # Z represents up and down
-    arm_pose_command = RobotCommandBuilder.arm_pose_command(
-        x=x,
-        y=y,
-        z=z,
-        qw=qw,
-        qx=qx,
-        qy=qy,
-        qz=qz,
+    fiducial_frame_name = fiducial_frame_name.replace("fiducial_", "filtered_fiducial_")
+
+
+    # Debug: Check if the frame is recognized by the robot
+    robot_state_client = robot.ensure_client("robot-state")
+    robot_state = robot_state_client.get_robot_state()
+    transforms_snapshot = robot_state.kinematic_state.transforms_snapshot
+    try:
+        fiducial_tform_body = get_a_tform_b(transforms_snapshot, BODY_FRAME_NAME, fiducial_frame_name)
+        print(f"Fiducial transform relative to body: {fiducial_tform_body}")
+    except KeyError:
+        print(f"Frame {fiducial_frame_name} not found in the current transform snapshot.")
+        return
+
+    # Define the SE3Pose for the desired position and orientation relative to the fiducial frame
+    x_offset = 0.0  # Adjust as necessary
+    y_offset = 0.0  # Adjust as necessary
+    z_offset = 0.0  # Adjust as necessary for the correct height above the fiducial
+    rotation_quaternion = geometry_pb2.Quaternion(w=1.0, x=0.0, y=0.0, z=0.0)  # No rotation
+
+    hand_pose = geometry_pb2.SE3Pose(
+        position=geometry_pb2.Vec3(x=x_offset, y=y_offset, z=z_offset),
+        rotation=rotation_quaternion
+    )
+
+    # Create the command to move the gripper to this pose relative to the fiducial frame
+    arm_pose_command = RobotCommandBuilder.arm_pose_command_from_pose(
+        hand_pose=hand_pose,
         frame_name=fiducial_frame_name,
-        seconds=5  # Duration to achieve the pose
+        seconds=5.0  # Duration to achieve the pose
     )
 
     # Send the command to the robot
-    command_client.robot_command(arm_pose_command)
-
-
     print(f"Placing X piece on fiducial {fiducial_id}")
+    command_client.robot_command(arm_pose_command)
 
     # Open the gripper to release the piece
     gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(1.0)
     command_client.robot_command(gripper_command)
-   
-    stow = RobotCommandBuilder.arm_stow_command()
-    block_until_arm_arrives(command_client, command_client.robot_command(stow), 3.0)
+
+    # Stow the arm after placing the piece
+    stow_command = RobotCommandBuilder.arm_stow_command()
+    block_until_arm_arrives(command_client, command_client.robot_command(stow_command), 3.0)
+
 
 
 '''
