@@ -5,7 +5,10 @@
 # Development Kit License (20191101-BDSDK-SL).
 
 
-"""Tutorial to show how to use Spot's arm.
+"""
+Tutorial to show how to use Spot's arm to detect and interact with fiducial markers (AprilTags).
+This script is a modified version of the fiducial_follow example from Boston Dynamics SDK. Specifically, boston-dynamics/python/examples/fiducial_follow 
+https://github.com/boston-dynamics/spot-sdk/tree/master/python/examples/fiducial_follow
 """
 import argparse
 import time
@@ -146,137 +149,21 @@ def place_piece(robot, fiducial_id):
 
 
     # Send the command to the robot
-    command_client.robot_command(arm_pose_command)
-
+    cmd_id = command_client.robot_command(arm_pose_command)
+    block_until_arm_arrives(command_client, cmd_id, 10.0)  
 
     print(f"Placing piece on fiducial {fiducial_id}")
 
-
-    time.sleep(2)
     # Open the gripper to release the piece
     control_gripper(command_client, 1)
-    time.sleep(2)
-    control_gripper(command_client, 0)
-
 
     print("Stow")
     stow_command = RobotCommandBuilder.arm_stow_command()
     block_until_arm_arrives(command_client, command_client.robot_command(stow_command), 3.0)
 
+    # Close gripper    
+    control_gripper(command_client, 0)
 
-
-'''
-#by Deyi, this might solve the placement issue, and this function will be integate in place_piece function
-def control_gripper(command_client, open_fraction):
-    gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(open_fraction)
-    command = RobotCommandBuilder.build_synchro_command(gripper_command)
-    cmd_id = command_client.robot_command(command)
-    block_until_arm_arrives(command_client, cmd_id, 5.0)
-
-
-def place_piece(robot, fid_id):
-    robot.time_sync.wait_for_sync()
-    command_client = robot.ensure_client(RobotCommandClient.default_service_name)
-    robot_state = robot.ensure_client(RobotStateClient.default_service_name)
-
-    def get_fiducial_objects():
-        """Get all fiducials that Spot detects with its perception system."""
-        # Get all fiducial objects (an object of a specific type).
-
-        _world_object_client = robot.ensure_client(
-            WorldObjectClient.default_service_name
-        )
-        request_fiducials = [world_object_pb2.WORLD_OBJECT_APRILTAG]
-        fiducial_objects = _world_object_client.list_world_objects(
-            object_type=request_fiducials
-        ).world_objects
-        if len(fiducial_objects) > 0:
-            # Return all fiducial objects it sees
-            for fid in fiducial_objects:
-                if fid.apriltag_properties.tag_id == fid_id:
-                    return fid
-        return None
-
-    robot_state = robot.ensure_client(RobotStateClient.default_service_name)
-    fiducial = get_fiducial_objects()
-    arm_command = None
-        
-    if fiducial is not None:
-        vision_tform_fiducial = get_a_tform_b(
-            fiducial.transforms_snapshot,
-            VISION_FRAME_NAME,
-            fiducial.apriltag_properties.frame_name_fiducial,
-        ).to_proto()
-
-        body_control = spot_command_pb2.BodyControlParams(
-            body_assist_for_manipulation=spot_command_pb2.BodyControlParams.
-            BodyAssistForManipulation(enable_hip_height_assist=True, enable_body_yaw_assist=True))
-        body_assist_enabled_stand_command = RobotCommandBuilder.synchro_stand_command(
-            params=spot_command_pb2.MobilityParams(body_control=body_control))
-
-        robot_rt_world = get_vision_tform_body(robot_state.get_robot_state().kinematic_state.transforms_snapshot)
-
-        
-        # Unstow the arm
-        ready_command = RobotCommandBuilder.arm_ready_command(
-            build_on_command=body_assist_enabled_stand_command)
-        ready_command_id = command_client.robot_command(ready_command)
-        robot.logger.info('Going to "ready" pose')
-        block_until_arm_arrives(command_client, ready_command_id, 3.0)
-        
-        print ("VISION_TFORM_FIDUCIAL: ")
-        print(vision_tform_fiducial)
-        # print(rotation)
-        print ("ROBOT_RT_WORLD: ")
-        print(robot_rt_world)
-                    
-        rotation = Quat()
-        # raise_arm = RobotCommandBuilder.arm_pose_command(
-        #     1,
-        #     vision_tform_fiducial.position.y - robot_rt_world.position.y,
-        #     vision_tform_fiducial.position.z - robot_rt_world.position.z,
-        #     rotation.w,
-        #     rotation.x,
-        #     rotation.y,
-        #     rotation.z,
-        #     frame_name=BODY_FRAME_NAME,
-        # )
-        
-        # print ("Doing raise arm command...")
-        # command = RobotCommandBuilder.build_synchro_command(raise_arm)
-        # cmd_id = command_client.robot_command(command)
-        # block_until_arm_arrives(command_client, cmd_id)
-        
-        arm_command = RobotCommandBuilder.arm_pose_command_from_pose(vision_tform_fiducial, VISION_FRAME_NAME, seconds=7, build_on_command=body_assist_enabled_stand_command)
-        # gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(0.0)
-        
-        #Move SPOT arm relative to fiducial position
-        # command = RobotCommandBuilder.build_synchro_command(
-        #     gripper_command, arm_command)
-        
-        print ("Doing arm pose command....")
-        cmd_id = command_client.robot_command(arm_command)
-        
-        block_until_arm_arrives(command_client, cmd_id)
-
-        # Open gripper to release the piece
-        print ("Opening gripper... ")
-        control_gripper(command_client, open_fraction=1.0) 
-        
-        # Make the open gripper RobotCommand
-        # gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(12.0)
-
-        # # Combine the arm and gripper commands into one RobotCommand
-        # command = RobotCommandBuilder.build_synchro_command(gripper_command)
-        # cmd_id = command_client.robot_command(command)
-        
-    print("Carrying Finished, Stowing...")
-    stow = RobotCommandBuilder.arm_stow_command()
-    block_until_arm_arrives
-    (
-        command_client, command_client.robot_command(stow), 3.0
-    )
-'''
 
 # Testing function
 if __name__ == "__main__":
