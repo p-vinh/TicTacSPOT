@@ -288,16 +288,13 @@ def main():
                 # like this?
                 return_to_initial_position(robot, robot_initial_coords)
                 class_obj = follow.fiducial_follow(robot, options, BOARD_REF)
+            piece = ttt.winner(board.getBoardState())
+            if piece == ttt.X:
+                print("Spot wins")
+            elif piece == ttt.O:
+                print("Player wins")
         # Expected number of fiducials is 0, the fiducials are covered with pieces
-        piece = ttt.winner(board.getBoardState())
-        if piece == ttt.X:
-            print("Spot wins")
-            # DANCE
-            # break For infinite game loop
-        elif piece == ttt.O:
-            print("Player wins")
-            # break
-        elif piece == None:
+        if piece == None:
             print("Draw!")
          
             
