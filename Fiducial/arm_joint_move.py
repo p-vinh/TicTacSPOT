@@ -11,6 +11,7 @@ import argparse
 import time
 import fiducial_follow as follow
 
+import numpy as np
 
 from bosdyn.api import geometry_pb2, arm_command_pb2, synchronized_command_pb2
 
@@ -48,79 +49,117 @@ from dotenv import load_dotenv
 
 
 
-# ChatGPT/BostonDynamics inspired
+# Modified code from fiducial_follow in Boston Dynamics SDK python/examples
+# utilized ChatGPT to fix some errors
 def detect_fiducial(world_object_client, fiducial_id):
     # Request the latest world objects (including fiducials)
     request_fiducials = [world_object_pb2.WORLD_OBJECT_APRILTAG]
     fiducial_objects = world_object_client.list_world_objects(object_type=request_fiducials).world_objects
-    
+ 
     # Find the specified fiducial
     for fid in fiducial_objects:
         if fid.apriltag_properties and fid.apriltag_properties.tag_id == fiducial_id:
             # Return the fiducial frame name
-            return fid.apriltag_properties.frame_name_fiducial
-    
+            return fid
     return None
 
 
+def offset_tag_pose(robot_state, object_rt_world, dist_margin=1.0):
+    """Offset the go-to location of the fiducial and compute the desired heading."""
+    robot_rt_world = get_vision_tform_body(robot_state.kinematic_state.transforms_snapshot)
+    robot_to_object_ewrt_world = np.array(
+        [object_rt_world.x - robot_rt_world.x, object_rt_world.y - robot_rt_world.y, 0])
+    robot_to_object_ewrt_world_norm = robot_to_object_ewrt_world / np.linalg.norm(
+        robot_to_object_ewrt_world)
+    heading = get_desired_angle(robot_to_object_ewrt_world_norm)
+    goto_rt_world = np.array([
+        object_rt_world.x - robot_to_object_ewrt_world_norm[0] * dist_margin,
+        object_rt_world.y - robot_to_object_ewrt_world_norm[1] * dist_margin
+    ])
+    return goto_rt_world, heading
 
+
+def get_desired_angle(xhat):
+    """Compute heading based on the vector from robot to object."""
+    zhat = [0.0, 0.0, 1.0]
+    yhat = np.cross(zhat, xhat)
+    mat = np.array([xhat, yhat, zhat]).transpose()
+    return Quat.from_matrix(mat).to_yaw()
+#by Deyi, this might solve the placement issue, and this function will be integate in place_piece function
+def control_gripper(command_client, open_fraction):
+    gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(open_fraction)
+    command = RobotCommandBuilder.build_synchro_command(gripper_command)
+    cmd_id = command_client.robot_command(command)
+    block_until_arm_arrives(command_client, cmd_id, 5.0)
+   
 def place_piece(robot, fiducial_id):
-    # For arm's perspective X (Forward), Y (Left and Right), and Z (Up and Down)
     command_client = robot.ensure_client(RobotCommandClient.default_service_name)
     world_object_client = robot.ensure_client(WorldObjectClient.default_service_name)
-
+    robot_state_client = robot.ensure_client(RobotStateClient.default_service_name)
+   
     # Unstow (ready) the arm
     unstow_command = RobotCommandBuilder.arm_ready_command()
+    # Send the command and block until the arm reaches the ready position
     block_until_arm_arrives(command_client, command_client.robot_command(unstow_command), 3.0)
+    time.sleep(2)
+
 
     # Detect Fiducial and its frame name
-    fiducial_frame_name = detect_fiducial(world_object_client, fiducial_id)
-
-    if fiducial_frame_name is None:
+    fiducial = detect_fiducial(world_object_client, fiducial_id)
+    if fiducial is not None:
+        vision_tform_fiducial = get_a_tform_b(
+            fiducial.transforms_snapshot, VISION_FRAME_NAME,
+            fiducial.apriltag_properties.frame_name_fiducial).to_proto()
+        if vision_tform_fiducial is not None:
+            fiducial_rt_world = vision_tform_fiducial.position
+        else:
+            print(f"Fiducial with ID {fiducial_id} not found.")
+            return
+    else:
         print(f"Fiducial with ID {fiducial_id} not found.")
         return
 
-    fiducial_frame_name = fiducial_frame_name.replace("fiducial_", "filtered_fiducial_")
+
+    print(f"Fiducial ID: {fiducial.apriltag_properties.tag_id}")
+    print(f"Fiducial apriltag: {fiducial.apriltag_properties}")
 
 
-    # Debug: Check if the frame is recognized by the robot
-    robot_state_client = robot.ensure_client("robot-state")
+    # Get the robot state
     robot_state = robot_state_client.get_robot_state()
-    transforms_snapshot = robot_state.kinematic_state.transforms_snapshot
-    try:
-        fiducial_tform_body = get_a_tform_b(transforms_snapshot, BODY_FRAME_NAME, fiducial_frame_name)
-        print(f"Fiducial transform relative to body: {fiducial_tform_body}")
-    except KeyError:
-        print(f"Frame {fiducial_frame_name} not found in the current transform snapshot.")
-        return
 
-    # Define the SE3Pose for the desired position and orientation relative to the fiducial frame
-    x_offset = 0.0  # Adjust as necessary
-    y_offset = 0.0  # Adjust as necessary
-    z_offset = 0.0  # Adjust as necessary for the correct height above the fiducial
-    rotation_quaternion = geometry_pb2.Quaternion(w=1.0, x=0.0, y=0.0, z=0.0)  # No rotation
 
-    hand_pose = geometry_pb2.SE3Pose(
-        position=geometry_pb2.Vec3(x=x_offset, y=y_offset, z=z_offset),
-        rotation=rotation_quaternion
+    # Define the position and orientation for the arm to move to
+    current_tag_world_pose, angle_desired = offset_tag_pose(robot_state, fiducial_rt_world, .01)
+   
+    # Build the arm pose command
+    arm_pose_command = RobotCommandBuilder.arm_pose_command(
+        x=current_tag_world_pose[0],
+        y=current_tag_world_pose[1],
+        z=fiducial_rt_world.z,  # Using fiducial z as reference
+        qw=np.cos(angle_desired / 2),
+        qx=0.0,
+        qy=0.0,
+        qz=np.sin(angle_desired / 2),
+        frame_name=VISION_FRAME_NAME,
+        seconds=5  # Duration to achieve the pose
     )
 
-    # Create the command to move the gripper to this pose relative to the fiducial frame
-    arm_pose_command = RobotCommandBuilder.arm_pose_command_from_pose(
-        hand_pose=hand_pose,
-        frame_name=fiducial_frame_name,
-        seconds=5.0  # Duration to achieve the pose
-    )
 
     # Send the command to the robot
-    print(f"Placing X piece on fiducial {fiducial_id}")
     command_client.robot_command(arm_pose_command)
 
-    # Open the gripper to release the piece
-    gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(1.0)
-    command_client.robot_command(gripper_command)
 
-    # Stow the arm after placing the piece
+    print(f"Placing piece on fiducial {fiducial_id}")
+
+
+    time.sleep(2)
+    # Open the gripper to release the piece
+    control_gripper(command_client, 1)
+    time.sleep(2)
+    control_gripper(command_client, 0)
+
+
+    print("Stow")
     stow_command = RobotCommandBuilder.arm_stow_command()
     block_until_arm_arrives(command_client, command_client.robot_command(stow_command), 3.0)
 
