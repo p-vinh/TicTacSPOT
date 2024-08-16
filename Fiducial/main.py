@@ -126,30 +126,6 @@ def convertTo2DArray(markerIds):
         ret.append(markerIds[i][0])
     return ret
 
-
-
-def return_to_initial_position(robot, initial_coords):
-    command_client = robot.ensure_client(RobotCommandClient.default_service_name)
-    
-    # Set up the mobility parameters (you can customize these as needed)
-    mobility_params = RobotCommandBuilder.mobility_params(
-        obstacle_avoidance_enabled=True
-    )
-
-    # Build the SE2Trajectory command to move the robot back to its initial position
-    cmd = RobotCommandBuilder.synchro_se2_trajectory_point_command(
-        goal_x=initial_coords.position.x,
-        goal_y=initial_coords.position.y,
-        goal_heading=initial_coords.rotation.yaw,  # Adjust to the original heading
-        frame_name=VISION_FRAME_NAME,
-        params=mobility_params
-    )
-
-    # Send the command to the robot
-    command_id = command_client.robot_command(cmd)
-    time.sleep(3.5)  # Allow time for the robot to move
-    robot.logger.info("Returning to initial position complete.")
-
     
 # example python main.py -s tictactoe -m my_efficient_model -c 0.85 -d 0.5 --avoid-obstacles True
 
@@ -212,25 +188,18 @@ def main():
         blocking_stand(command_client)
         time.sleep(.35)
 
-        #perhaps raise Spot taller to increase perception of the board
-        # height = .2
-        # cmd = RobotCommandBuilder.synchro_stand_command(body_height=height)
-        # command_client.robot_command(cmd)
-        # robot.logger.info('Set body height to {}'.format(height))
-
         expectedNumberOfFiducials = 9
         playerTurn = ttt.O
         spotTurn = ttt.X
         board = bi.BoardInput(LIST_IDS)
         board.printBoard()
         
-         
         #Obtain initial coordinates - these hold SPOTS initial position when booting up
         robot_initial_coords = get_vision_tform_body(_robot_state_client.get_robot_state().kinematic_state.transforms_snapshot)
         print("Robot Initial Coords:")
         print(robot_initial_coords.position)
         
-        # 1. Find Fidicials and Update Board 
+        # Find Fidicials and Update Board 
         # Assuming player initially placed an O piece on the board (player went when there was 9 (odd number) open fiducials)
         print("Player's turn! Assuming player has already placed O piece on board")
         expectedNumberOfFiducials -= 1
@@ -270,7 +239,6 @@ def main():
             
                 # 4. Orient to the board using refrence fiducial
                 print("Orienting to the board.")
-                return_to_initial_position(robot, robot_initial_coords)
                 class_obj = follow.fiducial_follow(robot, options, BOARD_REF)
 
                 # 5. Place piece
@@ -285,14 +253,13 @@ def main():
                 board.printBoardInfo()
 
                 # 6. Orient itself back to board
-                # like this?
-                return_to_initial_position(robot, robot_initial_coords)
                 class_obj = follow.fiducial_follow(robot, options, BOARD_REF)
-            piece = ttt.winner(board.getBoardState())
-            if piece == ttt.X:
-                print("Spot wins")
-            elif piece == ttt.O:
-                print("Player wins")
+            if(expectedNumberOfFiducials <= 4):    
+                piece = ttt.winner(board.getBoardState())
+                if piece == ttt.X:
+                    print("Spot wins")
+                elif piece == ttt.O:
+                    print("Player wins")
         # Expected number of fiducials is 0, the fiducials are covered with pieces
         if piece == None:
             print("Draw!")
