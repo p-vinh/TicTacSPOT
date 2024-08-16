@@ -258,8 +258,10 @@ def main():
                 piece = ttt.winner(board.getBoardState())
                 if piece == ttt.X:
                     print("Spot wins")
+                    break
                 elif piece == ttt.O:
                     print("Player wins")
+                    break
         # Expected number of fiducials is 0, the fiducials are covered with pieces
         if piece == None:
             print("Draw!")
