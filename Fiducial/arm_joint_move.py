@@ -70,14 +70,20 @@ def detect_fiducial(world_object_client, fiducial_id):
 def offset_tag_pose(robot_state, object_rt_world, dist_margin=1.0):
     """Offset the go-to location of the fiducial and compute the desired heading."""
     robot_rt_world = get_vision_tform_body(robot_state.kinematic_state.transforms_snapshot)
+    # This works but maybe also making the calcuation in the Z axis will improve it too
     robot_to_object_ewrt_world = np.array(
         [object_rt_world.x - robot_rt_world.x, object_rt_world.y - robot_rt_world.y, 0])
+    # Test whether changing the Z axis here improves the placement accuracy
+    #robot_to_object_ewrt_world = np.array(
+    #    [object_rt_world.x - robot_rt_world.x, object_rt_world.y - robot_rt_world.y, object_rt_world.z - robot_rt_world.z])
     robot_to_object_ewrt_world_norm = robot_to_object_ewrt_world / np.linalg.norm(
         robot_to_object_ewrt_world)
     heading = get_desired_angle(robot_to_object_ewrt_world_norm)
     goto_rt_world = np.array([
         object_rt_world.x - robot_to_object_ewrt_world_norm[0] * dist_margin,
-        object_rt_world.y - robot_to_object_ewrt_world_norm[1] * dist_margin
+        object_rt_world.y - robot_to_object_ewrt_world_norm[1] * dist_margin,
+        object_rt_world.z - robot_to_object_ewrt_world_norm[2] * dist_margin
+
     ])
     return goto_rt_world, heading
 
@@ -134,11 +140,31 @@ def place_piece(robot, fiducial_id):
     # Define the position and orientation for the arm to move to
     current_tag_world_pose, angle_desired = offset_tag_pose(robot_state, fiducial_rt_world, .01)
    
+    initial_offset = 0.3  # Adjust this offset value as needed
+    initial_x_position = current_tag_world_pose[0] + initial_offset  # Move slightly forward of the fiducial
+
+    arm_pose_command = RobotCommandBuilder.arm_pose_command(
+        x=initial_x_position,
+        y=current_tag_world_pose[1],
+        z=current_tag_world_pose[2],
+        qw=np.cos(angle_desired / 2),
+        qx=0.0,
+        qy=0.0,
+        qz=np.sin(angle_desired / 2),
+        frame_name=VISION_FRAME_NAME,
+        seconds=5  # Duration to achieve the pose
+    )
+
+
+    # Send the command to the robot
+    cmd_id = command_client.robot_command(arm_pose_command)
+    block_until_arm_arrives(command_client, cmd_id, 10.0)  
+
     # Build the arm pose command
     arm_pose_command = RobotCommandBuilder.arm_pose_command(
         x=current_tag_world_pose[0],
         y=current_tag_world_pose[1],
-        z=fiducial_rt_world.z,  # Using fiducial z as reference
+        z=current_tag_world_pose[2],
         qw=np.cos(angle_desired / 2),
         qx=0.0,
         qy=0.0,
