@@ -6,14 +6,13 @@ import goToInitial as goTo
 import logging
 from dotenv import load_dotenv
 import time
-import numpy as np
 
 import bosdyn.client
 import bosdyn.client.util
 import bosdyn.geometry
-from bosdyn.api import world_object_pb2, estop_pb2
-from bosdyn.client.frame_helpers import (GRAV_ALIGNED_BODY_FRAME_NAME,BODY_FRAME_NAME, ODOM_FRAME_NAME, VISION_FRAME_NAME, get_a_tform_b,
-                                         get_vision_tform_body)
+from bosdyn.api import world_object_pb2, estop_pb2, geometry_pb2, trajectory_pb2
+from bosdyn.client.frame_helpers import (BODY_FRAME_NAME, ODOM_FRAME_NAME, VISION_FRAME_NAME,
+                                         get_se2_a_tform_b, get_vision_tform_body)
 from bosdyn.api.spot import robot_command_pb2 as spot_command_pb2
 from bosdyn.api.geometry_pb2 import SE2Velocity, SE2VelocityLimit, Vec2
 from bosdyn.client.lease import LeaseClient
@@ -126,6 +125,84 @@ def convertTo2DArray(markerIds):
         ret.append(markerIds[i][0])
     return ret
 
+def get_robot_coordinates(robot_state_client):
+    """Returns the current coordinates of Spot in the world frame."""
+    robot_state = get_vision_tform_body(robot_state_client.get_robot_state().kinematic_state.transforms_snapshot)
+    return {
+        'x': robot_state.x,
+        'y': robot_state.y,
+        'z': robot_state.z,
+        'yaw': robot_state.rot.to_yaw()
+    }
+
+
+def go_to_coordinates(robot_command_client, x, y, yaw=0.0, frame_name='vision', body_height=0.0, locomotion_hint=spot_command_pb2.HINT_AUTO, powered_on=True):
+    """Commands Spot to go to the given coordinates."""
+    mobility_params = set_mobility_params()
+    _robot_state_client = robot.ensure_client(RobotStateClient.default_service_name)
+    cmd = RobotCommandBuilder.synchro_se2_trajectory_point_command(
+        goal_x=x, goal_y=y, goal_heading=yaw, frame_name=frame_name, params=mobility_params,
+        body_height=body_height, locomotion_hint=locomotion_hint)
+   
+    end_time = 10.0  # Command duration in seconds
+    if powered_on:
+        # Issue the command to the robot
+        robot_command_client.robot_command(lease=None, command=cmd,
+                                           end_time_secs=time.time() + end_time)
+        # Feedback loop to check and wait until the robot reaches the desired position or timeout
+        start_time = time.time()
+        current_time = time.time()
+        while (not is_at_target(_robot_state_client, x, y, yaw) and current_time - start_time < end_time):
+            time.sleep(.25)
+            current_time = time.time()
+
+
+def is_at_target(robot_state_client, x, y, yaw, epsilon=0.1):
+    """Check if the robot is at the target position within a margin of error."""
+    current_state = get_vision_tform_body(robot_state_client.get_robot_state().kinematic_state.transforms_snapshot)
+    current_angle = current_state.rot.to_yaw()
+    return (abs(current_state.x - x) < epsilon and
+            abs(current_state.y - y) < epsilon and
+            abs(current_angle - yaw) < 0.075)  # Adjust epsilon for yaw as needed
+
+
+def set_mobility_params():
+    """Set robot mobility params to disable obstacle avoidance."""
+    obstacles = spot_command_pb2.ObstacleParams(disable_vision_body_obstacle_avoidance=True,
+                                                disable_vision_foot_obstacle_avoidance=True,
+                                                disable_vision_foot_constraint_avoidance=True,
+                                                obstacle_avoidance_padding=.001)
+    # Default body control settings
+    body_control = set_default_body_control()
+    speed_limit = SE2VelocityLimit(max_vel=SE2Velocity(
+        linear=Vec2(x=0.5, y=0.5), angular=1.0))
+   
+    mobility_params = spot_command_pb2.MobilityParams(
+        obstacle_params=obstacles, vel_limit=speed_limit, body_control=body_control,
+        locomotion_hint=spot_command_pb2.HINT_AUTO)
+   
+    return mobility_params
+
+
+def set_default_body_control():
+    """Set default body control params to current body position."""
+    footprint_R_body = bosdyn.geometry.EulerZXY()
+    position = geometry_pb2.Vec3(x=0.0, y=0.0, z=0.0)
+    rotation = footprint_R_body.to_quaternion()
+    pose = geometry_pb2.SE3Pose(position=position, rotation=rotation)
+    point = trajectory_pb2.SE3TrajectoryPoint(pose=pose)
+    traj = trajectory_pb2.SE3Trajectory(points=[point])
+    return spot_command_pb2.BodyControlParams(base_offset_rt_footprint=traj)
+
+def orient_to_board(initial_coords, options):
+    print("Orienting to the board.")
+
+    print("Step 1: Going to initial boot up coordinates")
+    go_to_coordinates(command_client, x=initial_coords['x'], y=initial_coords['y'], yaw=initial_coords['yaw'], powered_on=robot.is_powered_on)
+    
+    print("Step 2: Finding and going to board reference fiducial")
+    class_obj = follow.fiducial_follow(robot, options, BOARD_REF)
+
     
 # example python main.py -s tictactoe -m my_efficient_model -c 0.85 -d 0.5 --avoid-obstacles True
 
@@ -183,7 +260,7 @@ def main():
         assert robot.has_arm(), 'Robot requires an arm to run.'
         verify_estop(robot)
 
-        #Spot Stand Up
+        # Spot Stand Up
         robot.logger.info("Commanding Spot to stand...")
         blocking_stand(command_client)
         time.sleep(.35)
@@ -194,11 +271,10 @@ def main():
         board = bi.BoardInput(LIST_IDS)
         board.printBoard()
         
-        #Obtain initial coordinates - these hold SPOTS initial position when booting up
-        robot_initial_coords = get_vision_tform_body(_robot_state_client.get_robot_state().kinematic_state.transforms_snapshot)
-        print("Robot Initial Coords:")
-        print(robot_initial_coords.position)
-        
+        # Record initial coordinates (for better gameplay, boot up Spot in an optimal position from the Tic-Tac-Toe board)
+        initial_coords = get_robot_coordinates(_robot_state_client)
+        print(f"Did new?Robot Initial Coordinates: {initial_coords}")
+
         # Find Fidicials and Update Board 
         # Assuming player initially placed an O piece on the board (player went when there was 9 (odd number) open fiducials)
         print("Player's turn! Assuming player has already placed O piece on board")
@@ -238,12 +314,10 @@ def main():
                 print(move, id)
             
                 # 4. Orient to the board using refrence fiducial
-                print("Orienting to the board.")
-                class_obj = follow.fiducial_follow(robot, options, BOARD_REF)
+                orient_to_board(initial_coords, options)
+
 
                 # 5. Place piece
-                # detectFiducial(expectedNumberOfFiducials, -0.2)     # Perhaps delete this as I reset pitch anyways? Can test with/without to see what's better, maybe remove the resetpitch within the function and do it selectively so that we can take advantage of the detectFiducial function here to put us in a position where we see the desired fiducials
-
                 place.place_piece(robot, id)
 
                 expectedNumberOfFiducials -= 1
@@ -253,7 +327,7 @@ def main():
                 board.printBoardInfo()
 
                 # 6. Orient itself back to board
-                class_obj = follow.fiducial_follow(robot, options, BOARD_REF)
+                orient_to_board(initial_coords, options)
             if(expectedNumberOfFiducials <= 4):    
                 piece = ttt.winner(board.getBoardState())
                 if piece == ttt.X:
