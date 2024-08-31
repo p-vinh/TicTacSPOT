@@ -23,7 +23,6 @@ import bosdyn.client
 import bosdyn.client.estop
 import bosdyn.client.lease
 import bosdyn.client.util
-from bosdyn.client import math_helpers
 from bosdyn.geometry import EulerZXY
 from bosdyn.api import (
     world_object_pb2,
@@ -94,7 +93,8 @@ def get_desired_angle(xhat):
     yhat = np.cross(zhat, xhat)
     mat = np.array([xhat, yhat, zhat]).transpose()
     return Quat.from_matrix(mat).to_yaw()
-#by Deyi, this might solve the placement issue, and this function will be integate in place_piece function
+
+#by Deyi
 def control_gripper(command_client, open_fraction):
     gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(open_fraction)
     command = RobotCommandBuilder.build_synchro_command(gripper_command)
@@ -140,8 +140,8 @@ def place_piece(robot, fiducial_id):
     # Define the position and orientation for the arm to move to
     current_tag_world_pose, angle_desired = offset_tag_pose(robot_state, fiducial_rt_world, .01)
    
-    initial_offset = 0.3  # Adjust this offset value as needed
-    initial_x_position = current_tag_world_pose[0] + initial_offset  # Move slightly forward of the fiducial
+    initial_offset = 0.5  # Adjust this offset value as needed
+    initial_x_position = current_tag_world_pose[0] - initial_offset  # Move slightly forward of the fiducial
 
     arm_pose_command = RobotCommandBuilder.arm_pose_command(
         x=initial_x_position,
@@ -152,7 +152,7 @@ def place_piece(robot, fiducial_id):
         qy=0.0,
         qz=np.sin(angle_desired / 2),
         frame_name=VISION_FRAME_NAME,
-        seconds=5  # Duration to achieve the pose
+        seconds=3  # Duration to achieve the pose
     )
 
 
@@ -170,7 +170,7 @@ def place_piece(robot, fiducial_id):
         qy=0.0,
         qz=np.sin(angle_desired / 2),
         frame_name=VISION_FRAME_NAME,
-        seconds=5  # Duration to achieve the pose
+        seconds=3  # Duration to achieve the pose
     )
 
 
