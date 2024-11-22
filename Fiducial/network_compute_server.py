@@ -122,6 +122,12 @@ def process_thread(args, request_queue, response_queue):
         # Convert to numpy arrays, and take index [0] to remove the batch dimension.
         # We're only interested in the first num_detections.
         num_detections = int(detections.pop('num_detections'))
+        
+        print(f"Model output: {detections}")
+        # for key, value in detections.items():
+        #     print(f"Key: {key}, Value: {value.numpy()}")
+        print(f"Number of detections: {num_detections}")
+        
         detections = {key: value[0, :num_detections].numpy()
                        for key, value in detections.items()}
 

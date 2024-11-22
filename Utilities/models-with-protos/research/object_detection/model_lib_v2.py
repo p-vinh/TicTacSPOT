@@ -23,7 +23,7 @@ import os
 import time
 import numpy as np
 
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 import tensorflow.compat.v2 as tf2
 
 from object_detection import eval_util
@@ -551,7 +551,7 @@ def train_loop(
     summary_writer = tf.compat.v2.summary.create_file_writer(
         summary_writer_filepath)
   else:
-    summary_writer = tf2.summary.create_noop_writer()
+    summary_writer = tf.summary.create_noop_writer()
 
   if use_tpu:
     num_steps_per_iteration = 100

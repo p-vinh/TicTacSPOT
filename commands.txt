@@ -15,9 +15,16 @@ python .\test_pickup\identify_object.py --service tictactoe --confidence 0.5 --m
 python fetch_only_pickup.py -s tictactoe -m my_efficient_model -c 0.85 192.168.80.3
 
 
-To run the project, you would need to run these 2 command lines:
+To run the project, you would need to run these 2 command lines for old model:
 python main.py -m my_efficient_model -s tictactoe -c 0.85 192.168.80.3
 python network_compute_server.py -m "C:\Users\CPP-UAV-CYBER-A\Spot.Data\TicTacSPOT\Utilities\models\my_efficient_model\saved_model" "C:\Users\CPP-UAV-CYBER-A\Spot.Data\TicTacSPOT\pieces\annotations\annotations\label_map.pbtxt" -d -n "tictactoe" 192.168.80.3
+
+or these 2 for new model:
+python main.py -m custom_model_lite -s tictactoe -c 0.85 192.168.80.3
+python network_compute_server_custom.py -m "C:\Users\CPP-UAV-CYBER-A\Spot.Data\TicTacSPOT\Utilities\models\custom_model_lite\saved_model" "C:\Users\CPP-UAV-CYBER-A\Spot.Data\TicTacSPOT\Utilities\models\custom_model_lite\labelmap.pbtxt" -d -n "tictactoe" 192.168.80.3
+
+To run the image collecting program, run this command from TicTacSPOT: 
+python .\Fiducial\capture_image.py 192.168.80.3 --image-source frontleft_fisheye_image --folder pieces/dogtoy/images
 
 .\Spot.Data\new_spot_env\Scripts\activate.bat
 cd Spot.Data\TicTacSPOT\Fiducial

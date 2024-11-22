@@ -1,5 +1,9 @@
 https://colab.research.google.com/github/EdjeElectronics/TensorFlow-Lite-Object-Detection-on-Android-and-Raspberry-Pi/blob/master/Train_TFLite2_Object_Detction_Model.ipynb#scrollTo=tQTfZChVzzpZ
 
+
+change model name --> chosen_model = 'efficientdet-d1'
+
+
 'efficientdet-d1': {
         'model_name': 'efficientdet_d1_coco17_tpu-32',
         'base_pipeline_file': 'ssd_efficientdet_d1_640x640_coco17_tpu-8.config',

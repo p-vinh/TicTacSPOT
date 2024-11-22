@@ -8,8 +8,10 @@ O = "O"
 def player(board):
     X_count = sum(x.count('X') for x in board)
     O_count = sum(x.count('O') for x in board)
-      
-    return O if X_count == O_count else X
+
+    #return O if X_count == O_count else X      original code
+    return O if X_count > O_count else X  
+
 
 # Returns set of all possible actions (i, j) available on the board
 def actions(board):
@@ -56,7 +58,7 @@ def winner(board):
                       [(0, 0), (1, 1), (2, 2)],
                       [(0, 2), (1, 1), (2, 0)]]
     
-    for wins in winning_combos:
+    """for wins in winning_combos:                
         X_count = 0
         O_count = 0
         for i, j in wins:
@@ -68,8 +70,13 @@ def winner(board):
             return O
         elif X_count == 3:
             return X
+    return None 
+    """
+    #New Code for winner function
+    for combo in winning_combos:
+        if board[combo[0][0]][combo[0][1]] == board[combo[1][0]][combo[1][1]] == board[combo[2][0]][combo[2][1]] != None:
+            return board[combo[0][0]][combo[0][1]]
     return None
-
 # Returns True if game is over, False otherwise
 def terminal(board):
     # If there is a winner, game is over
@@ -85,7 +92,6 @@ def utility(board):
         return -1
     else:
         return 0
-    
 # Returns the optimal action for the current player on the board
 def minimax(board):
     optimal_action = None
@@ -114,7 +120,16 @@ def minimax(board):
                 bestScore = score
                 optimal_action = action
         return optimal_action, board[optimal_action[0]][optimal_action[1]]
-    
+"""
+#New minimax function
+def minimax(board):
+    current_player = player(board)
+    if current_player == X:
+        value, move = maxScore(board, -math.inf, math.inf)
+    else:
+        value, move = minScore(board, -math.inf, math.inf)
+    return move
+"""
 def maxScore(board, alpha, beta):
     if terminal(board):
         return utility(board)
@@ -131,7 +146,24 @@ def maxScore(board, alpha, beta):
             break
     
     return bestScore
+"""
+#New maxScore function
+def maxScore(board, alpha, beta):
+    if terminal(board):
+        return utility(board), None
+    bestScore = -math.inf
+    optimal_action = None
+    for action in actions(board):
+        min_result, _ = minScore(result(board, action), alpha, beta)
+        if min_result > bestScore:
+            bestScore = min_result
+            optimal_action = action
+        alpha = max(alpha, bestScore)
+        if beta <= alpha:
+            break
+    return bestScore, optimal_action
 
+"""
 def minScore(board, alpha, beta):
     if terminal(board):
         return utility(board)
@@ -148,3 +180,20 @@ def minScore(board, alpha, beta):
             break
 
     return bestScore
+"""
+#New minScore function
+def minScore(board, alpha, beta):
+    if terminal(board):
+        return utility(board), None
+    bestScore = math.inf
+    optimal_action = None
+    for action in actions(board):
+        max_result, _ = maxScore(result(board, action), alpha, beta)
+        if max_result < bestScore:
+            bestScore = max_result
+            optimal_action = action
+        beta = min(beta, bestScore)
+        if beta <= alpha:
+            break
+    return bestScore, optimal_action
+"""
