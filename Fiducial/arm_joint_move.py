@@ -23,7 +23,6 @@ import bosdyn.client
 import bosdyn.client.estop
 import bosdyn.client.lease
 import bosdyn.client.util
-from bosdyn.client import math_helpers
 from bosdyn.geometry import EulerZXY
 from bosdyn.api import (
     world_object_pb2,
@@ -67,18 +66,23 @@ def detect_fiducial(world_object_client, fiducial_id):
     return None
 
 
-def offset_tag_pose(robot_state, object_rt_world, dist_margin=0.1):
+def offset_tag_pose(robot_state, object_rt_world, dist_margin=1.0):
     """Offset the go-to location of the fiducial and compute the desired heading."""
     robot_rt_world = get_vision_tform_body(robot_state.kinematic_state.transforms_snapshot)
+    # This works but maybe also making the calcuation in the Z axis will improve it too
     robot_to_object_ewrt_world = np.array(
         [object_rt_world.x - robot_rt_world.x, object_rt_world.y - robot_rt_world.y, 0])
+    # Test whether changing the Z axis here improves the placement accuracy
+    #robot_to_object_ewrt_world = np.array(
+    #    [object_rt_world.x - robot_rt_world.x, object_rt_world.y - robot_rt_world.y, object_rt_world.z - robot_rt_world.z])
     robot_to_object_ewrt_world_norm = robot_to_object_ewrt_world / np.linalg.norm(
         robot_to_object_ewrt_world)
     heading = get_desired_angle(robot_to_object_ewrt_world_norm)
     goto_rt_world = np.array([
         object_rt_world.x - robot_to_object_ewrt_world_norm[0] * dist_margin,
         object_rt_world.y - robot_to_object_ewrt_world_norm[1] * dist_margin,
-        object_rt_world.z - robot_to_object_ewrt_world_norm[1] * dist_margin
+        object_rt_world.z - robot_to_object_ewrt_world_norm[2] * dist_margin
+
     ])
     return goto_rt_world, heading
 
@@ -89,7 +93,8 @@ def get_desired_angle(xhat):
     yhat = np.cross(zhat, xhat)
     mat = np.array([xhat, yhat, zhat]).transpose()
     return Quat.from_matrix(mat).to_yaw()
-#by Deyi, this might solve the placement issue, and this function will be integate in place_piece function
+
+#by Deyi
 def control_gripper(command_client, open_fraction):
     gripper_command = RobotCommandBuilder.claw_gripper_open_fraction_command(open_fraction)
     command = RobotCommandBuilder.build_synchro_command(gripper_command)
@@ -118,8 +123,6 @@ def place_piece(robot, fiducial_id):
             fiducial_rt_world = vision_tform_fiducial.position
         else:
             print(f"Fiducial with ID {fiducial_id} not found.")
-            print("Checking again")
-            fiducial = detect_fiducial(world_object_client, fiducial_id)
             return
     else:
         print(f"Fiducial with ID {fiducial_id} not found.")
@@ -136,9 +139,10 @@ def place_piece(robot, fiducial_id):
 
     # Define the position and orientation for the arm to move to
     current_tag_world_pose, angle_desired = offset_tag_pose(robot_state, fiducial_rt_world, .01)
-    initial_offset = .5  # Adjust this offset value as needed
-    initial_x_position = current_tag_world_pose[0] - initial_offset 
-    # Build the arm pose command
+   
+    initial_offset = 0.5  # Adjust this offset value as needed
+    initial_x_position = current_tag_world_pose[0] - initial_offset  # Move slightly forward of the fiducial
+
     arm_pose_command = RobotCommandBuilder.arm_pose_command(
         x=initial_x_position,
         y=current_tag_world_pose[1],
@@ -168,10 +172,13 @@ def place_piece(robot, fiducial_id):
         frame_name=VISION_FRAME_NAME,
         seconds=3  # Duration to achieve the pose
     )
-       # Send the command to the robot
+
+
+    # Send the command to the robot
     cmd_id = command_client.robot_command(arm_pose_command)
     block_until_arm_arrives(command_client, cmd_id, 10.0)  
-    print(f"NEWPlacing piece on fiducial {fiducial_id}")
+
+    print(f"Placing piece on fiducial {fiducial_id}")
 
     # Open the gripper to release the piece
     control_gripper(command_client, 1)
